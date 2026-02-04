@@ -798,14 +798,14 @@
                                    ))}
                                 </div>
                              </div>
-                             {/* 修改 3: 總參與人數背景色改為藍紫色漸層 */}
-                             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-[2rem] text-white shadow-xl">
+                             {/* 修改 3: 總參與人數背景色改為較淺的深灰色，搭配橘色系 */}
+                             <div className="bg-slate-600 p-6 rounded-[2rem] text-white shadow-xl border border-slate-500">
                                 <div className="flex items-center justify-between mb-2">
-                                   <span className="text-indigo-100 text-xs font-black uppercase tracking-widest">總參與人數</span>
+                                   <span className="text-slate-300 text-xs font-black uppercase tracking-widest">總參與人數</span>
                                    <span className="text-3xl font-black">{allUsers.length}</span>
                                 </div>
-                                <div className="h-1.5 bg-indigo-400/30 w-full rounded-full"></div>
-                                <p className="text-[10px] text-indigo-200 mt-3 font-bold">數據同步：{new Date().toLocaleTimeString()} (即時更新)</p>
+                                <div className="h-1.5 bg-slate-500 w-full rounded-full"></div>
+                                <p className="text-[10px] text-slate-300 mt-3 font-bold">數據同步：{new Date().toLocaleTimeString()} (即時更新)</p>
                              </div>
                           </div>
                         ) : (
