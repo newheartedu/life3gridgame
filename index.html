@@ -1,838 +1,851 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  getDocs,
-  collection, 
-  onSnapshot, 
-  query, 
-  where,
-  updateDoc
-} from 'firebase/firestore';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  onAuthStateChanged,
-  signInWithCustomToken,
-  signOut,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  fetchSignInMethodsForEmail
-} from 'firebase/auth';
-import { 
-  CheckCircle2, 
-  User, 
-  ShieldCheck, 
-  LogOut, 
-  LayoutGrid,
-  Loader2,
-  ChevronRight,
-  ArrowLeft,
-  Trophy,
-  BarChart3,
-  Users,
-  KeyRound,
-  AlertTriangle,
-  Mail,
-  Copy
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life3 九宮格任務</title>
+    
+    <!-- 1. 引入 Tailwind CSS (樣式) -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
-// --- Firebase 初始化 ---
-const firebaseConfig = {
-  apiKey: "AIzaSyByt0w_VbguiifETHkpUyJoxuCS_LyIVpY",
-  authDomain: "life3grid.firebaseapp.com",
-  projectId: "life3grid",
-  storageBucket: "life3grid.firebasestorage.app",
-  messagingSenderId: "1091079634646",
-  appId: "1:1091079634646:web:ca46d336d28d6690f6d377"
-};
+    <!-- 2. 設定 Import Map -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js",
+        "lucide-react": "https://esm.sh/lucide-react@0.294.0"
+      }
+    }
+    </script>
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = 'life3-mission-grid-v2'; 
+    <!-- 3. 引入 Babel (鎖定版本) -->
+    <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
 
-// --- 常數設定 ---
-const ALLIANCES = ['夢幻', 'Favor', '心不老', '顏值', 'Revival'];
-const DEFAULT_TASKS = [
-  "探訪 3 個人",
-  "完成一週讀經計畫",
-  "為一位朋友禱告",
-  "參加一次小組聚會",
-  "主動關心一位新人",
-  "寫下 3 件感恩事項",
-  "完成一次禁食禱告",
-  "傳福音給一個人",
-  "安靜靈修 30 分鐘"
-];
+    <style>
+        /* 自定義動畫樣式 */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .animate-in { animation: fadeIn 0.5s ease-out; }
+    </style>
+</head>
+<body class="bg-orange-50">
+    <div id="root"></div>
 
-const ADMIN_CREDENTIALS = {
-  account: 'life3',
-  password: 'life3'
-};
+    <!-- 4. 應用程式主邏輯 -->
+    <script type="text/babel" data-type="module" data-presets="react">
+        import React, { useState, useEffect, useMemo, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { initializeApp } from 'firebase/app';
+        import { 
+          getFirestore, 
+          doc, 
+          setDoc, 
+          getDoc, 
+          getDocs,
+          collection, 
+          onSnapshot, 
+          query, 
+          where,
+          updateDoc
+        } from 'firebase/firestore';
+        import { 
+          getAuth, 
+          signInAnonymously, 
+          onAuthStateChanged,
+          signOut,
+          createUserWithEmailAndPassword,
+          signInWithEmailAndPassword,
+          GoogleAuthProvider, // 新增
+          signInWithPopup     // 新增
+        } from 'firebase/auth';
+        import { 
+          CheckCircle2, 
+          User, 
+          ShieldCheck, 
+          LogOut, 
+          LayoutGrid,
+          Loader2,
+          ChevronRight,
+          ArrowLeft,
+          Trophy,
+          BarChart3,
+          Users,
+          KeyRound,
+          AlertTriangle,
+          Mail,
+          Copy,
+          Chrome // 作為 Google 圖示
+        } from 'lucide-react';
 
-// --- 共用組件 ---
+        // --- Firebase 初始化 ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyByt0w_VbguiifETHkpUyJoxuCS_LyIVpY",
+          authDomain: "life3grid.firebaseapp.com",
+          projectId: "life3grid",
+          storageBucket: "life3grid.firebasestorage.app",
+          messagingSenderId: "1091079634646",
+          appId: "1:1091079634646:web:ca46d336d28d6690f6d377"
+        };
 
-const LoadingScreen = ({ message = "系統連線中..." }) => (
-  <div className="flex flex-col items-center justify-center min-h-screen bg-orange-50">
-    <Loader2 className="w-10 h-10 text-orange-500 animate-spin mb-4" />
-    <p className="text-orange-700 font-black tracking-tight">{message}</p>
-  </div>
-);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = 'life3-mission-grid-v2'; 
 
-const ErrorScreen = ({ error, onRetry }) => {
-  const currentDomain = window.location.hostname;
-  const [copied, setCopied] = useState(false);
+        // --- 常數設定 ---
+        const ALLIANCES = ['夢幻', 'Favor', '心不老', '顏值', 'Revival'];
+        const DEFAULT_TASKS = [
+          "探訪 3 個人",
+          "完成一週讀經計畫",
+          "為一位朋友禱告",
+          "參加一次小組聚會",
+          "主動關心一位新人",
+          "寫下 3 件感恩事項",
+          "完成一次禁食禱告",
+          "傳福音給一個人",
+          "安靜靈修 30 分鐘"
+        ];
 
-  const copyDomain = () => {
-    navigator.clipboard.writeText(currentDomain);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+        const ADMIN_CREDENTIALS = {
+          account: 'life3',
+          password: 'life3'
+        };
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-red-50 p-6">
-      <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border border-red-100 text-center">
-        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <AlertTriangle className="text-red-600 w-8 h-8" />
-        </div>
-        <h2 className="text-2xl font-black text-slate-800 mb-2">發生錯誤</h2>
-        <p className="text-slate-600 font-bold mb-6 text-sm leading-relaxed">
-          {error}
-        </p>
-        
-        {error.includes("auth/operation-not-allowed") && (
-          <div className="bg-slate-50 p-4 rounded-xl text-left text-xs text-slate-500 space-y-2 mb-6 border border-slate-100">
-            <p className="font-black text-slate-700 mb-2">🔧 設定教學 (Firebase Console):</p>
-            <ol className="list-decimal list-inside space-y-1 ml-1">
-              <li>前往 Firebase Console &gt; Authentication</li>
-              <li>點選 <strong>Sign-in method</strong></li>
-              <li>啟用 <strong>Email/Password</strong></li>
-            </ol>
+        // --- 組件 ---
+
+        const LoadingScreen = ({ message = "系統連線中..." }) => (
+          <div className="flex flex-col items-center justify-center min-h-screen bg-orange-50">
+            <Loader2 className="w-10 h-10 text-orange-500 animate-spin mb-4" />
+            <p className="text-orange-700 font-black tracking-tight">{message}</p>
           </div>
-        )}
+        );
 
-        <button 
-          onClick={onRetry || (() => window.location.reload())}
-          className="w-full bg-red-500 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-red-600 transition-all active:scale-95 flex items-center justify-center gap-2 mt-4"
-        >
-          我已設定完成，重試
-        </button>
-      </div>
-    </div>
-  );
-};
+        const ErrorScreen = ({ error, onRetry }) => {
+          const currentDomain = window.location.hostname;
+          const [copied, setCopied] = useState(false);
 
-const App = () => {
-  const [user, setUser] = useState(null);
-  const [view, setView] = useState('auth'); // auth, register, grid, admin_login, admin_dashboard, forgot_password
-  const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [userTasks, setUserTasks] = useState(new Array(9).fill(false));
-  const [allUsers, setAllUsers] = useState([]);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [adminTab, setAdminTab] = useState('rank');
+          const copyDomain = () => {
+            navigator.clipboard.writeText(currentDomain);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          };
 
-  // 控制是否自動載入
-  const isFirstLoad = useRef(true);
-
-  // 表單狀態
-  const [formData, setFormData] = useState({ 
-    name: '', 
-    email: '',
-    alliance: ALLIANCES[0], 
-    group: '', 
-    password: '' 
-  });
-  
-  const [loginData, setLoginData] = useState({ email: '', password: '' });
-  const [adminLoginData, setAdminLoginData] = useState({ account: '', password: '' });
-  const [forgotData, setForgotData] = useState({ email: '' });
-  const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-
-  // 1. 身份驗證監聽
-  useEffect(() => {
-    let mounted = true;
-    
-    // 監聽 Auth 狀態改變
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      if (!mounted) return;
-      
-      setUser(u);
-      
-      if (u) {
-        // 如果使用者已登入，嘗試讀取 Profile
-        try {
-          const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', u.uid);
-          const profileSnap = await getDoc(profileRef);
-          
-          if (profileSnap.exists()) {
-            const data = profileSnap.data();
-            setProfile(data);
-            setUserTasks(data.tasks || new Array(9).fill(false));
-            
-            // 如果是在登入/註冊頁面，自動跳轉
-            if (['auth', 'register'].includes(view)) {
-              setView('grid');
-            }
-          } else {
-            // 已登入但沒有 Profile (異常狀態，或是註冊中)
-            setProfile(null);
-          }
-        } catch (err) {
-          console.error("Profile fetch error:", err);
-        }
-      }
-      
-      setLoading(false);
-    });
-
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, [view]); // View 依賴是用來處理跳轉邏輯
-
-  // 3. 管理者數據監聽
-  useEffect(() => {
-    // 關鍵修正：確保 user 存在時才開始監聽，這樣 onSnapshot 才會運作
-    if (view !== 'admin_dashboard' || !user) return;
-
-    const profilesCol = collection(db, 'artifacts', appId, 'public', 'data', 'profiles');
-    const unsubscribe = onSnapshot(profilesCol, (snapshot) => {
-      const users = [];
-      snapshot.forEach((doc) => {
-        users.push({ id: doc.id, ...doc.data() });
-      });
-      setAllUsers(users);
-    }, (err) => {
-      console.error("Admin dashboard sync error:", err);
-    });
-
-    return () => unsubscribe();
-  }, [view, user]);
-
-  // --- 統計排行榜 ---
-  const allianceStats = useMemo(() => {
-    const stats = ALLIANCES.map(name => ({
-      name,
-      userCount: 0,
-      completedTasks: 0,
-      totalPossibleTasks: 0,
-      completionRate: 0
-    }));
-
-    allUsers.forEach(u => {
-      const idx = ALLIANCES.indexOf(u.alliance);
-      if (idx !== -1) {
-        stats[idx].userCount += 1;
-        const done = u.tasks ? u.tasks.filter(v => v).length : 0;
-        stats[idx].completedTasks += done;
-        stats[idx].totalPossibleTasks += 9;
-      }
-    });
-
-    return stats.map(s => ({
-      ...s,
-      completionRate: s.totalPossibleTasks > 0 ? (s.completedTasks / s.totalPossibleTasks) * 100 : 0
-    })).sort((a, b) => b.completionRate - a.completionRate);
-  }, [allUsers]);
-
-  // --- 核心處理功能 ---
-
-  // Email 註冊
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    if (!formData.name || !formData.email || !formData.password || !formData.group) {
-      setError('請填寫完整資訊');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    
-    try {
-      // 1. 建立 Firebase Auth 使用者
-      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      const newUser = userCredential.user;
-
-      // 2. 建立 Firestore Profile
-      const profileData = {
-        uid: newUser.uid,
-        name: formData.name,
-        loginName: formData.email, // 使用 Email 作為登入識別
-        email: formData.email,
-        alliance: formData.alliance,
-        group: formData.group,
-        tasks: new Array(9).fill(false),
-        updatedAt: Date.now(),
-        authProvider: 'email'
-      };
-
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', newUser.uid), profileData);
-      
-      setProfile(profileData);
-      setUserTasks(profileData.tasks);
-      setView('grid');
-    } catch (err) {
-      console.error(err);
-      if (err.code === 'auth/email-already-in-use') {
-        setError('此 Email 已被註冊');
-      } else if (err.code === 'auth/weak-password') {
-        setError('密碼長度至少需 6 個字元');
-      } else {
-        setError(`註冊失敗: ${err.message}`);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Email 登入
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setError('');
-    
-    if (!loginData.email || !loginData.password) {
-      setError('請輸入 Email 和密碼');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, loginData.email, loginData.password);
-      // onAuthStateChanged 會處理跳轉
-    } catch (err) {
-      console.error(err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setError('帳號或密碼錯誤');
-      } else if (err.code === 'auth/too-many-requests') {
-        setError('登入嘗試次數過多，請稍後再試');
-      } else {
-        setError(`登入失敗: ${err.message}`);
-      }
-      setLoading(false);
-    }
-  };
-
-  const handleForgotPassword = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccessMsg('');
-    
-    try {
-      const profilesCol = collection(db, 'artifacts', appId, 'public', 'data', 'profiles');
-      const q = query(profilesCol, where('email', '==', forgotData.email));
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        // 簡易驗證提示
-        setSuccessMsg(`請查看您的信箱以重設密碼 (模擬功能)`);
-      } else {
-        setError('找不到此 Email 的註冊資料');
-      }
-    } catch (err) {
-      setError('查詢失敗');
-    }
-  };
-
-  const handleToggleTask = async (index) => {
-    if (!profile || !user) return;
-    
-    const newTasks = [...userTasks];
-    newTasks[index] = !newTasks[index];
-    setUserTasks(newTasks);
-
-    try {
-      const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid);
-      await updateDoc(profileRef, {
-        tasks: newTasks,
-        updatedAt: Date.now()
-      });
-    } catch (err) {
-      console.error("Save error:", err);
-    }
-  };
-
-  // 關鍵修正：管理者登入邏輯
-  const handleAdminLogin = async (e) => {
-    e.preventDefault();
-    if (adminLoginData.account === ADMIN_CREDENTIALS.account && 
-        adminLoginData.password === ADMIN_CREDENTIALS.password) {
-      
-      setLoading(true);
-      try {
-        // 如果目前沒有登入任何 Firebase 用戶，則進行匿名登入
-        // 這是為了通過 Firestore 的安全規則 (if !user return 邏輯)
-        if (!auth.currentUser) {
-           await signInAnonymously(auth);
-        }
-        
-        setView('admin_dashboard');
-        setError('');
-      } catch (err) {
-        console.error("Admin auth failed:", err);
-        setError('後台連線驗證失敗');
-      } finally {
-        setLoading(false);
-      }
-
-    } else {
-      setError('管理者帳號或密碼錯誤');
-    }
-  };
-
-  const logout = async () => {
-    setLoading(true);
-    try {
-      await signOut(auth);
-      setProfile(null);
-      setUserTasks(new Array(9).fill(false));
-      setSelectedUser(null);
-      setAllUsers([]);
-      setError('');
-      setSuccessMsg('');
-      setLoginData({ email: '', password: '' });
-      setView('auth');
-    } catch (err) {
-      console.error("Logout failed:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (authError) return <ErrorScreen error={authError} onRetry={() => setAuthError(null)} />;
-  if (loading) return <LoadingScreen message="系統處理中..." />;
-
-  return (
-    <div className="min-h-screen bg-orange-50 text-slate-800 font-sans selection:bg-orange-200">
-      <header className="bg-white border-b border-orange-100 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white shadow-md">
-            <LayoutGrid size={20} />
-          </div>
-          <h1 className="font-bold text-lg tracking-tight text-slate-700">Life3 九宮格</h1>
-        </div>
-        
-        {(profile || view === 'admin_dashboard' || view === 'admin_login' || view === 'forgot_password') && (
-           <button 
-             onClick={logout} 
-             className="flex items-center gap-1 text-slate-400 hover:text-orange-600 transition-colors px-3 py-1 rounded-full hover:bg-orange-50 font-black"
-           >
-             <span className="text-sm">登出 / 返回</span>
-             <LogOut size={18} />
-           </button>
-        )}
-        
-        {!profile && view === 'auth' && (
-          <button onClick={() => setView('admin_login')} className="text-slate-300 text-[10px] font-black hover:text-slate-500 transition-colors uppercase tracking-widest">
-            Admin
-          </button>
-        )}
-      </header>
-
-      <main className="max-w-md mx-auto p-6 pb-24">
-        
-        {/* --- 登入頁面 --- */}
-        {view === 'auth' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="text-center space-y-3 pt-8">
-              <div className="inline-block px-3 py-1 rounded-full bg-orange-100 text-orange-600 text-[10px] font-black tracking-widest uppercase mb-2">Christian Youth</div>
-              <h2 className="text-4xl font-black text-slate-800 leading-tight">Life3<br/>九宮格任務</h2>
-              <p className="text-slate-500 font-medium tracking-tight font-bold">信仰實踐，從每一格挑戰開始</p>
-            </div>
-            
-            <div className="bg-white p-7 rounded-[2.5rem] shadow-2xl shadow-orange-200/40 border border-orange-100 space-y-6">
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-black text-slate-600 mb-1 ml-1">Email</label>
-                  <input 
-                    type="email" 
-                    className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-orange-500 focus:bg-white transition-all outline-none font-bold text-lg"
-                    placeholder="name@example.com"
-                    value={loginData.email}
-                    onChange={(e) => setLoginData({...loginData, email: e.target.value})}
-                  />
+          return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-red-50 p-6">
+              <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border border-red-100 text-center">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertTriangle className="text-red-600 w-8 h-8" />
                 </div>
-                <div>
-                  <label className="block text-sm font-black text-slate-600 mb-1 ml-1 flex justify-between">
-                    密碼
-                    <button type="button" onClick={() => setView('forgot_password')} className="text-xs text-orange-400 hover:text-orange-600 font-bold">忘記密碼？</button>
-                  </label>
-                  <input 
-                    type="password" 
-                    className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-orange-500 focus:bg-white transition-all outline-none font-bold text-lg"
-                    placeholder="請輸入密碼"
-                    value={loginData.password}
-                    onChange={(e) => setLoginData({...loginData, password: e.target.value})}
-                  />
-                </div>
+                <h2 className="text-2xl font-black text-slate-800 mb-2">發生錯誤</h2>
+                <p className="text-slate-600 font-bold mb-6 text-sm leading-relaxed">
+                  {error}
+                </p>
                 
-                {error && <p className="text-red-500 text-xs text-center font-black bg-red-50 py-2 rounded-lg">{error}</p>}
-                
-                <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-orange-300 transition-all active:scale-[0.97] mt-2 flex items-center justify-center gap-2">
-                  <Mail size={18} />
-                  Email 登入
-                </button>
-              </form>
-            </div>
-
-            <div className="text-center">
-              <button 
-                onClick={() => setView('register')} 
-                className="text-slate-400 text-sm font-black hover:text-orange-600 transition-colors"
-              >
-                第一次參加？使用 Email 註冊
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* --- 忘記密碼 --- */}
-        {view === 'forgot_password' && (
-           <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500 pt-8">
-              <div className="text-center">
-                 <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
-                    <KeyRound className="text-orange-600" />
-                 </div>
-                 <h2 className="text-2xl font-black text-slate-800">找回密碼</h2>
-                 <p className="text-slate-400 text-sm font-bold mt-1">請輸入 Email 進行查詢</p>
-              </div>
-              <form onSubmit={handleForgotPassword} className="space-y-4 bg-white p-7 rounded-[2.5rem] shadow-xl border border-orange-100">
-                <input 
-                  type="email" 
-                  placeholder="註冊時填寫的 Email"
-                  className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold"
-                  value={forgotData.email}
-                  onChange={(e) => setForgotData({...forgotData, email: e.target.value})}
-                />
-                {error && <p className="text-red-500 text-xs text-center font-black py-2 bg-red-50 rounded-lg">{error}</p>}
-                {successMsg && <div className="p-4 bg-green-50 text-green-700 rounded-2xl text-center font-black text-lg border border-green-200 shadow-sm animate-bounce">{successMsg}</div>}
-                <button className="w-full bg-orange-500 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all">送出查詢</button>
-                <button type="button" onClick={() => setView('auth')} className="w-full text-slate-400 text-sm font-black font-bold">返回登入</button>
-              </form>
-           </div>
-        )}
-
-        {/* --- 註冊頁面 --- */}
-        {view === 'register' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="text-center space-y-2 pt-4">
-              <h2 className="text-3xl font-black text-slate-800">建立挑戰帳號</h2>
-              <p className="text-slate-500 text-sm font-bold tracking-tight">填寫基本資料，即刻開始九宮格挑戰</p>
-            </div>
-            
-            <form onSubmit={handleRegister} className="space-y-4 bg-white p-7 rounded-[2.5rem] shadow-xl border border-orange-100">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-black text-slate-600 mb-1 ml-1">真實姓名</label>
-                  <input 
-                    type="text" 
-                    className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold"
-                    placeholder="姓名"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-black text-slate-600 mb-1 ml-1">Email (帳號)</label>
-                  <input 
-                    type="email" 
-                    className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold"
-                    placeholder="example@mail.com"
-                    value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-black text-slate-600 mb-1 ml-1">聯盟</label>
-                    <select 
-                      className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none appearance-none font-bold text-center"
-                      value={formData.alliance}
-                      onChange={(e) => setFormData({...formData, alliance: e.target.value})}
-                    >
-                      {ALLIANCES.map(a => <option key={a} value={a}>{a}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-black text-slate-600 mb-1 ml-1">小組</label>
-                    <input 
-                      type="text" 
-                      className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold text-center"
-                      placeholder="小組名"
-                      value={formData.group}
-                      onChange={(e) => setFormData({...formData, group: e.target.value})}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-black text-slate-600 mb-1 ml-1">設定密碼</label>
-                  <input 
-                    type="password" 
-                    className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold"
-                    placeholder="請輸入密碼"
-                    value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  />
-                </div>
-              </div>
-              {error && <p className="text-red-500 text-xs text-center font-black py-2 bg-red-50 rounded-lg">{error}</p>}
-              <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95">
-                建立帳號並登入
-              </button>
-              <button type="button" onClick={() => setView('auth')} className="w-full text-slate-400 font-bold text-sm py-2">返回登入</button>
-            </form>
-          </div>
-        )}
-
-        {/* --- 九宮格任務畫面 (維持不變) --- */}
-        {view === 'grid' && profile && (
-          <div className="space-y-6 animate-in fade-in duration-700">
-            <div className="bg-white p-5 rounded-3xl border border-orange-100 shadow-xl shadow-orange-100/30 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                   <span className="px-2 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-md">{profile.alliance}</span>
-                   <span className="text-[10px] font-black text-slate-400">{profile.group}</span>
-                </div>
-                <h3 className="text-2xl font-black text-slate-800">{profile.name} <span className="text-lg font-medium text-slate-500 ml-1">挑戰中</span></h3>
-              </div>
-              <div className="relative flex items-center justify-center">
-                 <svg className="w-16 h-16 transform -rotate-90">
-                    <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-100" />
-                    <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray={176} strokeDashoffset={176 - (176 * userTasks.filter(v => v).length / 9)} className="text-orange-500 transition-all duration-1000 ease-out" />
-                 </svg>
-                 <div className="absolute flex flex-col items-center">
-                    <span className="text-xl font-black text-slate-800 leading-none">{userTasks.filter(v => v).length}</span>
-                    <span className="text-[9px] font-black text-slate-400">/ 9</span>
-                 </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4 aspect-square">
-              {DEFAULT_TASKS.map((task, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleToggleTask(idx)}
-                  className={`
-                    relative p-4 rounded-3xl flex flex-col items-center justify-center text-center transition-all duration-300
-                    ${userTasks[idx] 
-                      ? 'bg-orange-500 text-white shadow-xl shadow-orange-300 ring-4 ring-orange-50 scale-[0.98]' 
-                      : 'bg-white text-slate-700 border-2 border-orange-100 hover:border-orange-400 hover:shadow-md'}
-                  `}
-                >
-                  <span className={`leading-snug font-black ${task.length > 8 ? 'text-lg' : 'text-xl'}`}>
-                    {task}
-                  </span>
-                  {userTasks[idx] && (
-                    <div className="absolute top-2 right-2">
-                      <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center shadow-sm">
-                         <CheckCircle2 size={14} className="text-orange-600 font-bold" />
-                      </div>
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <button 
-              onClick={logout}
-              className="w-full flex items-center justify-center gap-2 bg-white border-2 border-orange-100 text-orange-500 font-black py-4 rounded-2xl hover:bg-orange-50 transition-all active:scale-95 shadow-sm"
-            >
-              <LogOut size={20} />
-              登出帳號
-            </button>
-
-            <div className="bg-orange-100/50 rounded-2xl p-5 text-center border border-orange-200/50">
-               <p className="text-orange-800 text-sm font-black italic">“凡你手所當作的事要盡力去作。” — 傳道書 9:10</p>
-            </div>
-          </div>
-        )}
-
-        {/* --- 管理者區塊 --- */}
-        {view === 'admin_login' && (
-          <div className="space-y-8 animate-in zoom-in-95 duration-300 pt-10">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-slate-100 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm">
-                 <ShieldCheck className="w-8 h-8 text-slate-700" />
-              </div>
-              <h2 className="text-2xl font-black text-slate-800">後台管理登入</h2>
-            </div>
-            <form onSubmit={handleAdminLogin} className="space-y-4 bg-white p-7 rounded-[2.5rem] shadow-xl border border-slate-200">
-              <input 
-                type="text" 
-                placeholder="管理帳號"
-                className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-slate-500 outline-none font-black"
-                value={adminLoginData.account}
-                onChange={(e) => setAdminLoginData({...adminLoginData, account: e.target.value})}
-              />
-              <input 
-                type="password" 
-                placeholder="管理密碼"
-                className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-slate-500 outline-none font-black"
-                value={adminLoginData.password}
-                onChange={(e) => setAdminLoginData({...adminLoginData, password: e.target.value})}
-              />
-               {error && <p className="text-red-500 text-xs text-center font-black py-2 bg-red-50 rounded-lg">{error}</p>}
-              <button className="w-full bg-slate-800 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all">登入主控台</button>
-              <button type="button" onClick={() => setView('auth')} className="w-full text-slate-400 text-sm font-black">返回前台</button>
-            </form>
-          </div>
-        )}
-
-        {/* 管理者 Dashboard (維持不變) */}
-        {view === 'admin_dashboard' && (
-          <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
-            {!selectedUser ? (
-              <React.Fragment>
-                <div className="flex items-center justify-between bg-white p-2 rounded-2xl border border-slate-100 shadow-sm">
-                   <button 
-                     onClick={() => setAdminTab('rank')}
-                     className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${adminTab === 'rank' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
-                   >
-                     <Trophy size={18} />
-                     <span className="text-sm font-black">聯盟排行</span>
-                   </button>
-                   <button 
-                     onClick={() => setAdminTab('users')}
-                     className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${adminTab === 'users' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
-                   >
-                     <Users size={18} />
-                     <span className="text-sm font-black">人員詳情</span>
-                   </button>
-                </div>
-
-                {adminTab === 'rank' ? (
-                  <div className="space-y-6 animate-in fade-in duration-500">
-                     <div className="bg-white p-6 rounded-[2.5rem] border border-orange-100 shadow-lg">
-                        <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-6">
-                           <BarChart3 className="text-orange-500" />
-                           聯盟完成度排行榜
-                        </h3>
-                        <div className="space-y-8">
-                           {allianceStats.map((s, idx) => (
-                             <div key={s.name} className="relative">
-                               <div className="flex justify-between items-end mb-2 px-1">
-                                  <div className="flex items-center gap-2">
-                                     <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${idx === 0 ? 'bg-yellow-400 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                                        {idx + 1}
-                                     </span>
-                                     <span className="font-black text-slate-700">{s.name} 聯盟</span>
-                                  </div>
-                                  <div className="text-right">
-                                     <span className="text-[10px] text-slate-400 font-black block leading-none">{s.completedTasks}/{s.totalPossibleTasks} 格</span>
-                                     <span className="text-lg font-black text-orange-600 leading-none">{s.completionRate.toFixed(1)}%</span>
-                                  </div>
-                               </div>
-                               <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-50">
-                                  <div 
-                                    className={`h-full transition-all duration-1000 ease-out rounded-full ${idx === 0 ? 'bg-gradient-to-r from-orange-400 to-orange-600 shadow-lg shadow-orange-200' : 'bg-orange-300'}`} 
-                                    style={{ width: `${s.completionRate}%` }} 
-                                  />
-                               </div>
-                               <p className="text-[9px] text-slate-400 mt-1 ml-1 font-black uppercase tracking-tighter">參與人數: {s.userCount} 位青年</p>
-                             </div>
-                           ))}
-                        </div>
-                     </div>
-                     
-                     <div className="bg-slate-800 p-6 rounded-[2rem] text-white shadow-xl">
-                        <div className="flex items-center justify-between mb-2">
-                           <span className="text-slate-400 text-xs font-black uppercase tracking-widest">總參與人數</span>
-                           <span className="text-3xl font-black">{allUsers.length}</span>
-                        </div>
-                        <div className="h-1.5 bg-slate-700 w-full rounded-full"></div>
-                        <p className="text-[10px] text-slate-500 mt-3 font-bold">數據同步：{new Date().toLocaleTimeString()} (即時更新)</p>
-                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3 animate-in fade-in duration-500">
-                    {allUsers.length === 0 && <p className="text-center text-slate-400 py-10 font-bold tracking-tight">尚未有玩家建立檔案</p>}
-                    {allUsers.sort((a,b) => b.updatedAt - a.updatedAt).map(u => {
-                      const completedCount = u.tasks ? u.tasks.filter(v => v).length : 0;
-                      return (
-                        <button 
-                          key={u.id} 
-                          onClick={() => setSelectedUser(u)}
-                          className="w-full bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between hover:border-orange-300 transition-all active:scale-[0.98]"
-                        >
-                          <div className="text-left">
-                            <p className="font-black text-slate-800 text-xl">{u.name}</p>
-                            <p className="text-[10px] text-orange-600 font-black uppercase tracking-wider">{u.alliance} 聯盟 · {u.group}</p>
-                            <div className="flex gap-1 mt-1">
-                              <p className="text-[9px] text-slate-300 font-bold bg-slate-100 px-1 rounded">{u.email || u.loginName}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <p className="text-lg font-black text-slate-700">{completedCount}/9</p>
-                              <div className="w-20 h-2 bg-slate-100 rounded-full mt-1 overflow-hidden border border-slate-50 shadow-inner">
-                                <div className="h-full bg-green-500" style={{ width: `${(completedCount/9)*100}%` }}></div>
-                              </div>
-                            </div>
-                            <ChevronRight size={18} className="text-slate-300" />
-                          </div>
-                        </button>
-                      )
-                    })}
+                {error.includes("auth/operation-not-allowed") && (
+                  <div className="bg-slate-50 p-4 rounded-xl text-left text-xs text-slate-500 space-y-2 mb-6 border border-slate-100">
+                    <p className="font-black text-slate-700 mb-2">🔧 設定教學 (Firebase Console):</p>
+                    <ol className="list-decimal list-inside space-y-1 ml-1">
+                      <li>前往 Firebase Console &gt; Authentication</li>
+                      <li>點選 <strong>Sign-in method</strong></li>
+                      <li>啟用 <strong>Email/Password</strong> 和 <strong>Google</strong></li>
+                    </ol>
                   </div>
                 )}
-              </React.Fragment>
-            ) : (
-              <div className="animate-in fade-in zoom-in-95 duration-300 space-y-6 pb-10">
+                 {error.includes("auth/unauthorized-domain") && (
+                  <div className="bg-slate-50 p-4 rounded-xl text-left text-xs text-slate-500 space-y-2 mb-6 border border-slate-100">
+                    <p className="font-black text-slate-700 mb-2">🔧 網域授權教學 (Firebase Console):</p>
+                    <ol className="list-decimal list-inside space-y-1 ml-1 mb-2">
+                      <li>前往 Authentication &gt; Settings</li>
+                      <li>點選 <strong>Authorized domains</strong></li>
+                      <li>新增網域: <strong>{currentDomain}</strong></li>
+                    </ol>
+                  </div>
+                )}
+
                 <button 
-                  onClick={() => setSelectedUser(null)} 
-                  className="flex items-center gap-1 text-slate-500 font-black hover:text-slate-800 transition-colors bg-white px-5 py-3 rounded-2xl shadow-sm border border-slate-100"
+                  onClick={onRetry || (() => window.location.reload())}
+                  className="w-full bg-red-500 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-red-600 transition-all active:scale-95 flex items-center justify-center gap-2 mt-4"
                 >
-                  <ArrowLeft size={16} /> 返回列表
+                  我已設定完成，重試
                 </button>
-                
-                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl">
-                  <div className="text-center mb-8">
-                    <div className="w-20 h-20 bg-orange-100 rounded-[2rem] flex items-center justify-center mx-auto mb-4 rotate-3 shadow-inner">
-                      <User size={40} className="text-orange-600 -rotate-3" />
-                    </div>
-                    <h3 className="text-3xl font-black text-slate-800">{selectedUser.name}</h3>
-                    <div className="flex flex-col items-center gap-1 mt-2">
-                       <div className="flex items-center gap-2">
-                          <span className="px-3 py-1 bg-orange-100 text-orange-600 text-xs font-black rounded-lg">{selectedUser.alliance} 聯盟</span>
-                          <span className="text-slate-400 text-xs font-black">{selectedUser.group}</span>
-                       </div>
-                       <p className="text-[10px] text-slate-300 font-bold mt-1">Email: {selectedUser.email || '未設定'}</p>
-                       <p className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter leading-none mt-1">帳號: {selectedUser.loginName}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <p className="text-xs font-black text-slate-400 uppercase mb-4 tracking-[0.2em] text-center">— 任務挑戰詳細進度 —</p>
-                    {DEFAULT_TASKS.map((task, idx) => (
-                      <div key={idx} className={`flex items-center gap-4 p-5 rounded-[1.5rem] border ${selectedUser.tasks && selectedUser.tasks[idx] ? 'bg-green-50/50 border-green-100' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                        {selectedUser.tasks && selectedUser.tasks[idx] 
-                          ? <CheckCircle2 size={22} className="text-green-500 shrink-0" />
-                          : <div className="w-5 h-5 border-2 border-slate-200 rounded-full shrink-0" />
-                        }
-                        <span className={`text-base font-black ${selectedUser.tasks && selectedUser.tasks[idx] ? 'text-slate-800' : 'text-slate-400'}`}>
-                          {task}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
-            )}
-          </div>
-        )}
-      </main>
+            </div>
+          );
+        };
 
-      <footer className="fixed bottom-0 left-0 right-0 bg-white/70 backdrop-blur-lg border-t border-orange-100/50 py-5 text-center z-10">
-        <p className="text-[10px] text-slate-400 font-black tracking-widest uppercase tracking-tighter">Life3 Mission Grid Game © 2026</p>
-      </footer>
-    </div>
-  );
-};
+        const App = () => {
+          const [user, setUser] = useState(null);
+          const [view, setView] = useState('auth'); 
+          const [loading, setLoading] = useState(true);
+          const [authError, setAuthError] = useState(null);
+          const [profile, setProfile] = useState(null);
+          const [userTasks, setUserTasks] = useState(new Array(9).fill(false));
+          const [allUsers, setAllUsers] = useState([]);
+          const [selectedUser, setSelectedUser] = useState(null);
+          const [adminTab, setAdminTab] = useState('rank');
 
-export default App;
+          const isFirstLoad = useRef(true);
+
+          const [formData, setFormData] = useState({ 
+            name: '', 
+            email: '',
+            alliance: ALLIANCES[0], 
+            group: '', 
+            password: '' 
+          });
+
+          // Google 補充資料表單
+          const [googleSetupData, setGoogleSetupData] = useState({
+            name: '',
+            alliance: ALLIANCES[0],
+            group: ''
+          });
+          
+          const [loginData, setLoginData] = useState({ email: '', password: '' });
+          const [adminLoginData, setAdminLoginData] = useState({ account: '', password: '' });
+          const [forgotData, setForgotData] = useState({ email: '' });
+          const [error, setError] = useState('');
+          const [successMsg, setSuccessMsg] = useState('');
+
+          useEffect(() => {
+            let mounted = true;
+            const unsubscribe = onAuthStateChanged(auth, async (u) => {
+              if (!mounted) return;
+              setUser(u);
+              if (u) {
+                try {
+                  const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', u.uid);
+                  const profileSnap = await getDoc(profileRef);
+                  if (profileSnap.exists()) {
+                    const data = profileSnap.data();
+                    setProfile(data);
+                    setUserTasks(data.tasks || new Array(9).fill(false));
+                    if (['auth', 'register', 'google_setup'].includes(view)) {
+                      setView('grid');
+                    }
+                  } else {
+                    // 已登入但沒有 Profile (通常是新 Google 用戶)
+                    setProfile(null);
+                    if (view !== 'google_setup') {
+                      // 預填 Google 名稱
+                      setGoogleSetupData(prev => ({ ...prev, name: u.displayName || '' }));
+                      setView('google_setup');
+                    }
+                  }
+                } catch (err) {
+                  console.error("Profile fetch error:", err);
+                }
+              }
+              setLoading(false);
+            });
+            return () => {
+              mounted = false;
+              unsubscribe();
+            };
+          }, [view]);
+
+          // 管理者數據監聽
+          useEffect(() => {
+            if (view !== 'admin_dashboard' || !user) return;
+            const profilesCol = collection(db, 'artifacts', appId, 'public', 'data', 'profiles');
+            const unsubscribe = onSnapshot(profilesCol, (snapshot) => {
+              const users = [];
+              snapshot.forEach((doc) => {
+                users.push({ id: doc.id, ...doc.data() });
+              });
+              setAllUsers(users);
+            }, (err) => {
+              console.error("Admin dashboard sync error:", err);
+            });
+            return () => unsubscribe();
+          }, [view, user]);
+
+          const allianceStats = useMemo(() => {
+            const stats = ALLIANCES.map(name => ({
+              name,
+              userCount: 0,
+              completedTasks: 0,
+              totalPossibleTasks: 0,
+              completionRate: 0
+            }));
+            allUsers.forEach(u => {
+              const idx = ALLIANCES.indexOf(u.alliance);
+              if (idx !== -1) {
+                stats[idx].userCount += 1;
+                const done = u.tasks ? u.tasks.filter(v => v).length : 0;
+                stats[idx].completedTasks += done;
+                stats[idx].totalPossibleTasks += 9;
+              }
+            });
+            return stats.map(s => ({
+              ...s,
+              completionRate: s.totalPossibleTasks > 0 ? (s.completedTasks / s.totalPossibleTasks) * 100 : 0
+            })).sort((a, b) => b.completionRate - a.completionRate);
+          }, [allUsers]);
+
+          // Google 登入
+          const handleGoogleLogin = async () => {
+            setError('');
+            setLoading(true);
+            try {
+              const provider = new GoogleAuthProvider();
+              await signInWithPopup(auth, provider);
+              // 登入成功後，onAuthStateChanged 會處理接下來的邏輯 (檢查 Profile 或跳轉)
+            } catch (err) {
+              console.error(err);
+              if (err.code === 'auth/popup-closed-by-user') {
+                setError('登入已取消');
+              } else if (err.code === 'auth/popup-blocked') {
+                setError('彈出視窗被阻擋，請允許彈出視窗後重試');
+              } else if (err.code === 'auth/unauthorized-domain') {
+                setAuthError(err.message); 
+              } else {
+                setError(`Google 登入失敗: ${err.message}`);
+              }
+              setLoading(false);
+            }
+          };
+
+          // Google 用戶補充資料
+          const handleGoogleSetupSubmit = async (e) => {
+            e.preventDefault();
+            if (!user) return;
+            if (!googleSetupData.name || !googleSetupData.group) {
+              setError('請填寫完整資訊');
+              return;
+            }
+
+            setLoading(true);
+            try {
+              const profileData = {
+                uid: user.uid,
+                name: googleSetupData.name,
+                email: user.email,
+                alliance: googleSetupData.alliance,
+                group: googleSetupData.group,
+                loginName: user.email,
+                tasks: new Array(9).fill(false),
+                updatedAt: Date.now(),
+                authProvider: 'google'
+              };
+
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid), profileData);
+              setProfile(profileData);
+              setView('grid');
+            } catch (err) {
+              console.error(err);
+              setError('資料儲存失敗，請稍後再試');
+            } finally {
+              setLoading(false);
+            }
+          };
+
+          const handleRegister = async (e) => {
+            e.preventDefault();
+            if (!formData.name || !formData.email || !formData.password || !formData.group) {
+              setError('請填寫完整資訊');
+              return;
+            }
+            setError('');
+            setLoading(true);
+            try {
+              const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+              const newUser = userCredential.user;
+              const profileData = {
+                uid: newUser.uid,
+                name: formData.name,
+                loginName: formData.email,
+                email: formData.email,
+                alliance: formData.alliance,
+                group: formData.group,
+                tasks: new Array(9).fill(false),
+                updatedAt: Date.now(),
+                authProvider: 'email'
+              };
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', newUser.uid), profileData);
+              setProfile(profileData);
+              setUserTasks(profileData.tasks);
+              setView('grid');
+            } catch (err) {
+              console.error(err);
+              if (err.code === 'auth/email-already-in-use') setError('此 Email 已被註冊');
+              else if (err.code === 'auth/weak-password') setError('密碼長度至少需 6 個字元');
+              else setError(`註冊失敗: ${err.message}`);
+            } finally {
+              setLoading(false);
+            }
+          };
+
+          const handleLogin = async (e) => {
+            e.preventDefault();
+            setError('');
+            if (!loginData.email || !loginData.password) {
+              setError('請輸入 Email 和密碼');
+              return;
+            }
+            setLoading(true);
+            try {
+              await signInWithEmailAndPassword(auth, loginData.email, loginData.password);
+            } catch (err) {
+              console.error(err);
+              if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') setError('帳號或密碼錯誤');
+              else if (err.code === 'auth/too-many-requests') setError('登入嘗試次數過多');
+              else if (err.code === 'auth/unauthorized-domain') setAuthError(err.message);
+              else setError(`登入失敗: ${err.message}`);
+              setLoading(false);
+            }
+          };
+
+          const handleForgotPassword = async (e) => {
+            e.preventDefault();
+            setError('');
+            setSuccessMsg('');
+            try {
+              const profilesCol = collection(db, 'artifacts', appId, 'public', 'data', 'profiles');
+              const q = query(profilesCol, where('email', '==', forgotData.email));
+              const querySnapshot = await getDocs(q);
+              if (!querySnapshot.empty) {
+                setSuccessMsg(`請查看您的信箱以重設密碼 (模擬功能)`);
+              } else {
+                setError('找不到此 Email 的註冊資料');
+              }
+            } catch (err) {
+              setError('查詢失敗');
+            }
+          };
+
+          const handleToggleTask = async (index) => {
+            if (!profile || !user) return;
+            const newTasks = [...userTasks];
+            newTasks[index] = !newTasks[index];
+            setUserTasks(newTasks);
+            try {
+              const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid);
+              await updateDoc(profileRef, { tasks: newTasks, updatedAt: Date.now() });
+            } catch (err) {
+              console.error("Save error:", err);
+            }
+          };
+
+          const handleAdminLogin = async (e) => {
+            e.preventDefault();
+            if (adminLoginData.account === ADMIN_CREDENTIALS.account && adminLoginData.password === ADMIN_CREDENTIALS.password) {
+              setLoading(true);
+              try {
+                if (!auth.currentUser) await signInAnonymously(auth);
+                setView('admin_dashboard');
+                setError('');
+              } catch (err) {
+                console.error("Admin auth failed:", err);
+                setError('後台連線驗證失敗');
+              } finally {
+                setLoading(false);
+              }
+            } else {
+              setError('管理者帳號或密碼錯誤');
+            }
+          };
+
+          const logout = async () => {
+            setLoading(true);
+            try {
+              await signOut(auth);
+              setProfile(null);
+              setUserTasks(new Array(9).fill(false));
+              setSelectedUser(null);
+              setAllUsers([]);
+              setError('');
+              setSuccessMsg('');
+              setLoginData({ email: '', password: '' });
+              setView('auth');
+            } catch (err) {
+              console.error("Logout failed:", err);
+            } finally {
+              setLoading(false);
+            }
+          };
+
+          if (authError) return <ErrorScreen error={authError} onRetry={() => setAuthError(null)} />;
+          if (loading) return <LoadingScreen message="系統處理中..." />;
+
+          return (
+            <div className="min-h-screen bg-orange-50 text-slate-800 font-sans selection:bg-orange-200">
+              <header className="bg-white border-b border-orange-100 px-6 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white shadow-md">
+                    <LayoutGrid size={20} />
+                  </div>
+                  <h1 className="font-bold text-lg tracking-tight text-slate-700">Life3 九宮格</h1>
+                </div>
+                {(profile || view === 'admin_dashboard' || view === 'admin_login' || view === 'forgot_password') && (
+                   <button onClick={logout} className="flex items-center gap-1 text-slate-400 hover:text-orange-600 transition-colors px-3 py-1 rounded-full hover:bg-orange-50 font-black">
+                     <span className="text-sm">登出 / 返回</span>
+                     <LogOut size={18} />
+                   </button>
+                )}
+                {!profile && view === 'auth' && (
+                  <button onClick={() => setView('admin_login')} className="text-slate-300 text-[10px] font-black hover:text-slate-500 transition-colors uppercase tracking-widest">
+                    Admin
+                  </button>
+                )}
+              </header>
+
+              <main className="max-w-md mx-auto p-6 pb-24">
+                {view === 'auth' && (
+                  <div className="space-y-8 animate-in">
+                    <div className="text-center space-y-3 pt-8">
+                      <div className="inline-block px-3 py-1 rounded-full bg-orange-100 text-orange-600 text-[10px] font-black tracking-widest uppercase mb-2">Christian Youth</div>
+                      <h2 className="text-4xl font-black text-slate-800 leading-tight">Life3<br/>九宮格任務</h2>
+                      <p className="text-slate-500 font-medium tracking-tight font-bold">信仰實踐，從每一格挑戰開始</p>
+                    </div>
+                    <div className="bg-white p-7 rounded-[2.5rem] shadow-2xl shadow-orange-200/40 border border-orange-100 space-y-6">
+                      <form onSubmit={handleLogin} className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-black text-slate-600 mb-1 ml-1">Email</label>
+                          <input type="email" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-orange-500 focus:bg-white transition-all outline-none font-bold text-lg" placeholder="name@example.com" value={loginData.email} onChange={(e) => setLoginData({...loginData, email: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-black text-slate-600 mb-1 ml-1 flex justify-between">
+                            密碼
+                            <button type="button" onClick={() => setView('forgot_password')} className="text-xs text-orange-400 hover:text-orange-600 font-bold">忘記密碼？</button>
+                          </label>
+                          <input type="password" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-orange-500 focus:bg-white transition-all outline-none font-bold text-lg" placeholder="請輸入密碼" value={loginData.password} onChange={(e) => setLoginData({...loginData, password: e.target.value})} />
+                        </div>
+                        {error && <p className="text-red-500 text-xs text-center font-black bg-red-50 py-2 rounded-lg">{error}</p>}
+                        <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-orange-300 transition-all active:scale-[0.97] mt-2 flex items-center justify-center gap-2">
+                          <Mail size={18} />
+                          Email 登入
+                        </button>
+                      </form>
+                      
+                      {/* Google Login Button */}
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <span className="w-full border-t border-slate-100" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-white px-2 text-slate-400 font-black">或使用</span>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={handleGoogleLogin}
+                        className="w-full bg-white border-2 border-slate-100 hover:bg-slate-50 text-slate-700 font-black py-4 rounded-2xl shadow-sm transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+                      >
+                         <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-green-500 p-[1px] flex items-center justify-center">
+                           <div className="w-full h-full bg-white rounded-full flex items-center justify-center text-[10px] font-bold">G</div>
+                         </div>
+                        Google 帳號登入
+                      </button>
+
+                    </div>
+                    <div className="text-center">
+                      <button onClick={() => setView('register')} className="text-slate-400 text-sm font-black hover:text-orange-600 transition-colors">
+                        第一次參加？使用 Email 註冊
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {/* Google Setup Screen */}
+                {view === 'google_setup' && (
+                  <div className="space-y-8 animate-in pt-4">
+                     <div className="text-center space-y-2">
+                      <h2 className="text-3xl font-black text-slate-800">歡迎加入！</h2>
+                      <p className="text-slate-500 text-sm font-bold tracking-tight">請填寫您的基本資料以完成檔案建立</p>
+                    </div>
+                    <form onSubmit={handleGoogleSetupSubmit} className="space-y-4 bg-white p-7 rounded-[2.5rem] shadow-xl border border-orange-100">
+                       <div>
+                          <label className="block text-sm font-black text-slate-600 mb-1 ml-1">真實姓名</label>
+                          <input 
+                            type="text" 
+                            className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold"
+                            value={googleSetupData.name}
+                            onChange={(e) => setGoogleSetupData({...googleSetupData, name: e.target.value})}
+                          />
+                       </div>
+                       <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-black text-slate-600 mb-1 ml-1">聯盟</label>
+                            <select 
+                              className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none appearance-none font-bold text-center"
+                              value={googleSetupData.alliance}
+                              onChange={(e) => setGoogleSetupData({...googleSetupData, alliance: e.target.value})}
+                            >
+                              {ALLIANCES.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-black text-slate-600 mb-1 ml-1">小組</label>
+                            <input 
+                              type="text" 
+                              className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold text-center"
+                              placeholder="小組名"
+                              value={googleSetupData.group}
+                              onChange={(e) => setGoogleSetupData({...googleSetupData, group: e.target.value})}
+                            />
+                          </div>
+                        </div>
+                        {error && <p className="text-red-500 text-xs text-center font-black py-2 bg-red-50 rounded-lg">{error}</p>}
+                        <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95">
+                          完成設定並進入
+                        </button>
+                    </form>
+                  </div>
+                )}
+                {view === 'forgot_password' && (
+                   <div className="space-y-8 animate-in pt-8">
+                      <div className="text-center">
+                         <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+                            <KeyRound className="text-orange-600" />
+                         </div>
+                         <h2 className="text-2xl font-black text-slate-800">找回密碼</h2>
+                         <p className="text-slate-400 text-sm font-bold mt-1">請輸入 Email 進行查詢</p>
+                      </div>
+                      <form onSubmit={handleForgotPassword} className="space-y-4 bg-white p-7 rounded-[2.5rem] shadow-xl border border-orange-100">
+                        <input type="email" placeholder="註冊時填寫的 Email" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold" value={forgotData.email} onChange={(e) => setForgotData({...forgotData, email: e.target.value})} />
+                        {error && <p className="text-red-500 text-xs text-center font-black py-2 bg-red-50 rounded-lg">{error}</p>}
+                        {successMsg && <div className="p-4 bg-green-50 text-green-700 rounded-2xl text-center font-black text-lg border border-green-200 shadow-sm animate-bounce">{successMsg}</div>}
+                        <button className="w-full bg-orange-500 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all">送出查詢</button>
+                        <button type="button" onClick={() => setView('auth')} className="w-full text-slate-400 text-sm font-black font-bold">返回登入</button>
+                      </form>
+                   </div>
+                )}
+                {view === 'register' && (
+                  <div className="space-y-8 animate-in">
+                    <div className="text-center space-y-2 pt-4">
+                      <h2 className="text-3xl font-black text-slate-800">建立挑戰帳號</h2>
+                      <p className="text-slate-500 text-sm font-bold tracking-tight">填寫基本資料，即刻開始九宮格挑戰</p>
+                    </div>
+                    <form onSubmit={handleRegister} className="space-y-4 bg-white p-7 rounded-[2.5rem] shadow-xl border border-orange-100">
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-black text-slate-600 mb-1 ml-1">真實姓名</label>
+                          <input type="text" className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold" placeholder="姓名" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-black text-slate-600 mb-1 ml-1">Email (帳號)</label>
+                          <input type="email" className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold" placeholder="example@mail.com" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-black text-slate-600 mb-1 ml-1">聯盟</label>
+                            <select className="w-full px-4 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none appearance-none font-bold text-center" value={formData.alliance} onChange={(e) => setFormData({...formData, alliance: e.target.value})}>
+                              {ALLIANCES.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-black text-slate-600 mb-1 ml-1">小組</label>
+                            <input type="text" className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold text-center" placeholder="小組名" value={formData.group} onChange={(e) => setFormData({...formData, group: e.target.value})} />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-black text-slate-600 mb-1 ml-1">設定密碼</label>
+                          <input type="password" className="w-full px-5 py-3.5 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-orange-500 outline-none font-bold" placeholder="請輸入密碼" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} />
+                        </div>
+                      </div>
+                      {error && <p className="text-red-500 text-xs text-center font-black py-2 bg-red-50 rounded-lg">{error}</p>}
+                      <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95">
+                        建立帳號並登入
+                      </button>
+                      <button type="button" onClick={() => setView('auth')} className="w-full text-slate-400 font-bold text-sm py-2">返回登入</button>
+                    </form>
+                  </div>
+                )}
+                {view === 'grid' && profile && (
+                  <div className="space-y-6 animate-in">
+                    <div className="bg-white p-5 rounded-3xl border border-orange-100 shadow-xl shadow-orange-100/30 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                           <span className="px-2 py-0.5 bg-orange-500 text-white text-[9px] font-black rounded-md">{profile.alliance}</span>
+                           <span className="text-[10px] font-black text-slate-400">{profile.group}</span>
+                        </div>
+                        <h3 className="text-2xl font-black text-slate-800">{profile.name} <span className="text-lg font-medium text-slate-500 ml-1">挑戰中</span></h3>
+                      </div>
+                      <div className="relative flex items-center justify-center">
+                         <svg className="w-16 h-16 transform -rotate-90">
+                            <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-100" />
+                            <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray={176} strokeDashoffset={176 - (176 * userTasks.filter(v => v).length / 9)} className="text-orange-500 transition-all duration-1000 ease-out" />
+                         </svg>
+                         <div className="absolute flex flex-col items-center">
+                            <span className="text-xl font-black text-slate-800 leading-none">{userTasks.filter(v => v).length}</span>
+                            <span className="text-[9px] font-black text-slate-400">/ 9</span>
+                         </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 aspect-square">
+                      {DEFAULT_TASKS.map((task, idx) => (
+                        <button key={idx} onClick={() => handleToggleTask(idx)} className={`relative p-4 rounded-3xl flex flex-col items-center justify-center text-center transition-all duration-300 ${userTasks[idx] ? 'bg-orange-500 text-white shadow-xl shadow-orange-300 ring-4 ring-orange-50 scale-[0.98]' : 'bg-white text-slate-700 border-2 border-orange-100 hover:border-orange-400 hover:shadow-md'}`}>
+                          <span className={`leading-snug font-black ${task.length > 8 ? 'text-lg' : 'text-xl'}`}>{task}</span>
+                          {userTasks[idx] && (
+                            <div className="absolute top-2 right-2">
+                              <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center shadow-sm">
+                                 <CheckCircle2 size={14} className="text-orange-600 font-bold" />
+                              </div>
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={logout} className="w-full flex items-center justify-center gap-2 bg-white border-2 border-orange-100 text-orange-500 font-black py-4 rounded-2xl hover:bg-orange-50 transition-all active:scale-95 shadow-sm">
+                      <LogOut size={20} />
+                      登出帳號
+                    </button>
+                    <div className="bg-orange-100/50 rounded-2xl p-5 text-center border border-orange-200/50">
+                       <p className="text-orange-800 text-sm font-black italic">“凡你手所當作的事要盡力去作。” — 傳道書 9:10</p>
+                    </div>
+                  </div>
+                )}
+                {view === 'admin_login' && (
+                  <div className="space-y-8 animate-in pt-10">
+                    <div className="text-center">
+                      <div className="w-16 h-16 bg-slate-100 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                         <ShieldCheck className="w-8 h-8 text-slate-700" />
+                      </div>
+                      <h2 className="text-2xl font-black text-slate-800">後台管理登入</h2>
+                    </div>
+                    <form onSubmit={handleAdminLogin} className="space-y-4 bg-white p-7 rounded-[2.5rem] shadow-xl border border-slate-200">
+                      <input type="text" placeholder="管理帳號" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-slate-500 outline-none font-black" value={adminLoginData.account} onChange={(e) => setAdminLoginData({...adminLoginData, account: e.target.value})} />
+                      <input type="password" placeholder="管理密碼" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-slate-500 outline-none font-black" value={adminLoginData.password} onChange={(e) => setAdminLoginData({...adminLoginData, password: e.target.value})} />
+                       {error && <p className="text-red-500 text-xs text-center font-black py-2 bg-red-50 rounded-lg">{error}</p>}
+                      <button className="w-full bg-slate-800 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all">登入主控台</button>
+                      <button type="button" onClick={() => setView('auth')} className="w-full text-slate-400 text-sm font-black">返回前台</button>
+                    </form>
+                  </div>
+                )}
+                {view === 'admin_dashboard' && (
+                  <div className="space-y-6 animate-in">
+                    {!selectedUser ? (
+                      <React.Fragment>
+                        <div className="flex items-center justify-between bg-white p-2 rounded-2xl border border-slate-100 shadow-sm">
+                           <button onClick={() => setAdminTab('rank')} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${adminTab === 'rank' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>
+                             <Trophy size={18} />
+                             <span className="text-sm font-black">聯盟排行</span>
+                           </button>
+                           <button onClick={() => setAdminTab('users')} className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 transition-all ${adminTab === 'users' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>
+                             <Users size={18} />
+                             <span className="text-sm font-black">人員詳情</span>
+                           </button>
+                        </div>
+                        {adminTab === 'rank' ? (
+                          <div className="space-y-6 animate-in">
+                             <div className="bg-white p-6 rounded-[2.5rem] border border-orange-100 shadow-lg">
+                                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-6">
+                                   <BarChart3 className="text-orange-500" />
+                                   聯盟完成度排行榜
+                                </h3>
+                                <div className="space-y-8">
+                                   {allianceStats.map((s, idx) => (
+                                     <div key={s.name} className="relative">
+                                       <div className="flex justify-between items-end mb-2 px-1">
+                                          <div className="flex items-center gap-2">
+                                             <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${idx === 0 ? 'bg-yellow-400 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                                {idx + 1}
+                                             </span>
+                                             <span className="font-black text-slate-700">{s.name} 聯盟</span>
+                                          </div>
+                                          <div className="text-right">
+                                             <span className="text-[10px] text-slate-400 font-black block leading-none">{s.completedTasks}/{s.totalPossibleTasks} 格</span>
+                                             <span className="text-lg font-black text-orange-600 leading-none">{s.completionRate.toFixed(1)}%</span>
+                                          </div>
+                                       </div>
+                                       <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-50">
+                                          <div className={`h-full transition-all duration-1000 ease-out rounded-full ${idx === 0 ? 'bg-gradient-to-r from-orange-400 to-orange-600 shadow-lg shadow-orange-200' : 'bg-orange-300'}`} style={{ width: `${s.completionRate}%` }} />
+                                       </div>
+                                       <p className="text-[9px] text-slate-400 mt-1 ml-1 font-black uppercase tracking-tighter">參與人數: {s.userCount} 位青年</p>
+                                     </div>
+                                   ))}
+                                </div>
+                             </div>
+                             <div className="bg-slate-800 p-6 rounded-[2rem] text-white shadow-xl">
+                                <div className="flex items-center justify-between mb-2">
+                                   <span className="text-slate-400 text-xs font-black uppercase tracking-widest">總參與人數</span>
+                                   <span className="text-3xl font-black">{allUsers.length}</span>
+                                </div>
+                                <div className="h-1.5 bg-slate-700 w-full rounded-full"></div>
+                                <p className="text-[10px] text-slate-500 mt-3 font-bold">數據同步：{new Date().toLocaleTimeString()} (即時更新)</p>
+                             </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-3 animate-in">
+                            {allUsers.length === 0 && <p className="text-center text-slate-400 py-10 font-bold tracking-tight">尚未有玩家建立檔案</p>}
+                            {allUsers.sort((a,b) => b.updatedAt - a.updatedAt).map(u => {
+                              const completedCount = u.tasks ? u.tasks.filter(v => v).length : 0;
+                              return (
+                                <button key={u.id} onClick={() => setSelectedUser(u)} className="w-full bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between hover:border-orange-300 transition-all active:scale-[0.98]">
+                                  <div className="text-left">
+                                    <p className="font-black text-slate-800 text-xl">{u.name}</p>
+                                    <p className="text-[10px] text-orange-600 font-black uppercase tracking-wider">{u.alliance} 聯盟 · {u.group}</p>
+                                    <div className="flex gap-1 mt-1">
+                                      <p className="text-[9px] text-slate-300 font-bold bg-slate-100 px-1 rounded">{u.email || u.loginName}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <div className="text-right">
+                                      <p className="text-lg font-black text-slate-700">{completedCount}/9</p>
+                                      <div className="w-20 h-2 bg-slate-100 rounded-full mt-1 overflow-hidden border border-slate-50 shadow-inner">
+                                        <div className="h-full bg-green-500" style={{ width: `${(completedCount/9)*100}%` }}></div>
+                                      </div>
+                                    </div>
+                                    <ChevronRight size={18} className="text-slate-300" />
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </React.Fragment>
+                    ) : (
+                      <div className="animate-in space-y-6 pb-10">
+                        <button onClick={() => setSelectedUser(null)} className="flex items-center gap-1 text-slate-500 font-black hover:text-slate-800 transition-colors bg-white px-5 py-3 rounded-2xl shadow-sm border border-slate-100">
+                          <ArrowLeft size={16} /> 返回列表
+                        </button>
+                        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl">
+                          <div className="text-center mb-8">
+                            <div className="w-20 h-20 bg-orange-100 rounded-[2rem] flex items-center justify-center mx-auto mb-4 rotate-3 shadow-inner">
+                              <User size={40} className="text-orange-600 -rotate-3" />
+                            </div>
+                            <h3 className="text-3xl font-black text-slate-800">{selectedUser.name}</h3>
+                            <div className="flex flex-col items-center gap-1 mt-2">
+                               <div className="flex items-center gap-2">
+                                  <span className="px-3 py-1 bg-orange-100 text-orange-600 text-xs font-black rounded-lg">{selectedUser.alliance} 聯盟</span>
+                                  <span className="text-slate-400 text-xs font-black">{selectedUser.group}</span>
+                               </div>
+                               <p className="text-[10px] text-slate-300 font-bold mt-1">Email: {selectedUser.email || '未設定'}</p>
+                               <p className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter leading-none mt-1">帳號: {selectedUser.loginName}</p>
+                            </div>
+                          </div>
+                          <div className="space-y-3">
+                            <p className="text-xs font-black text-slate-400 uppercase mb-4 tracking-[0.2em] text-center">— 任務挑戰詳細進度 —</p>
+                            {DEFAULT_TASKS.map((task, idx) => (
+                              <div key={idx} className={`flex items-center gap-4 p-5 rounded-[1.5rem] border ${selectedUser.tasks && selectedUser.tasks[idx] ? 'bg-green-50/50 border-green-100' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                                {selectedUser.tasks && selectedUser.tasks[idx] 
+                                  ? <CheckCircle2 size={22} className="text-green-500 shrink-0" />
+                                  : <div className="w-5 h-5 border-2 border-slate-200 rounded-full shrink-0" />
+                                }
+                                <span className={`text-base font-black ${selectedUser.tasks && selectedUser.tasks[idx] ? 'text-slate-800' : 'text-slate-400'}`}>
+                                  {task}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </main>
+              <footer className="fixed bottom-0 left-0 right-0 bg-white/70 backdrop-blur-lg border-t border-orange-100/50 py-5 text-center z-10">
+                <p className="text-[10px] text-slate-400 font-black tracking-widest uppercase tracking-tighter">Life3 Mission Grid Game © 2026</p>
+              </footer>
+            </div>
+          );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
