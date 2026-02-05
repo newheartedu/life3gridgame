@@ -49,7 +49,8 @@
           onSnapshot, 
           query, 
           where,
-          updateDoc
+          updateDoc,
+          deleteDoc // 新增 deleteDoc
         } from 'firebase/firestore';
         import { 
           getAuth, 
@@ -58,8 +59,8 @@
           signOut,
           createUserWithEmailAndPassword,
           signInWithEmailAndPassword,
-          GoogleAuthProvider, // 新增
-          signInWithPopup     // 新增
+          GoogleAuthProvider, 
+          signInWithPopup     
         } from 'firebase/auth';
         import { 
           CheckCircle2, 
@@ -77,7 +78,8 @@
           AlertTriangle,
           Mail,
           Copy,
-          Chrome // 作為 Google 圖示
+          Chrome,
+          Trash2 // 新增 Trash2 icon
         } from 'lucide-react';
 
         // --- Firebase 初始化 ---
@@ -186,6 +188,7 @@
           const [allUsers, setAllUsers] = useState([]);
           const [selectedUser, setSelectedUser] = useState(null);
           const [adminTab, setAdminTab] = useState('rank');
+          const [adminError, setAdminError] = useState(null);
 
           const isFirstLoad = useRef(true);
 
@@ -197,7 +200,6 @@
             password: '' 
           });
 
-          // Google 補充資料表單
           const [googleSetupData, setGoogleSetupData] = useState({
             name: '',
             alliance: ALLIANCES[0],
@@ -227,10 +229,9 @@
                       setView('grid');
                     }
                   } else {
-                    // 已登入但沒有 Profile (通常是新 Google 用戶)
                     setProfile(null);
-                    if (view !== 'google_setup') {
-                      // 預填 Google 名稱
+                    // 修正：如果使用者是匿名(管理者)，不要跳轉到歡迎加入頁面
+                    if (view !== 'google_setup' && !u.isAnonymous) {
                       setGoogleSetupData(prev => ({ ...prev, name: u.displayName || '' }));
                       setView('google_setup');
                     }
@@ -250,6 +251,8 @@
           // 管理者數據監聽
           useEffect(() => {
             if (view !== 'admin_dashboard' || !user) return;
+            setAdminError(null);
+            
             const profilesCol = collection(db, 'artifacts', appId, 'public', 'data', 'profiles');
             const unsubscribe = onSnapshot(profilesCol, (snapshot) => {
               const users = [];
@@ -259,6 +262,9 @@
               setAllUsers(users);
             }, (err) => {
               console.error("Admin dashboard sync error:", err);
+              let msg = "讀取數據失敗";
+              if (err.code === 'permission-denied') msg = "權限不足：請檢查 Firebase Rules";
+              setAdminError(msg + " (" + err.code + ")");
             });
             return () => unsubscribe();
           }, [view, user]);
@@ -286,14 +292,12 @@
             })).sort((a, b) => b.completionRate - a.completionRate);
           }, [allUsers]);
 
-          // Google 登入
           const handleGoogleLogin = async () => {
             setError('');
             setLoading(true);
             try {
               const provider = new GoogleAuthProvider();
               await signInWithPopup(auth, provider);
-              // 登入成功後，onAuthStateChanged 會處理接下來的邏輯 (檢查 Profile 或跳轉)
             } catch (err) {
               console.error(err);
               if (err.code === 'auth/popup-closed-by-user') {
@@ -309,7 +313,6 @@
             }
           };
 
-          // Google 用戶補充資料
           const handleGoogleSetupSubmit = async (e) => {
             e.preventDefault();
             if (!user) return;
@@ -371,9 +374,14 @@
               setView('grid');
             } catch (err) {
               console.error(err);
-              if (err.code === 'auth/email-already-in-use') setError('此 Email 已被註冊');
-              else if (err.code === 'auth/weak-password') setError('密碼長度至少需 6 個字元');
-              else setError(`註冊失敗: ${err.message}`);
+              if (err.code === 'auth/email-already-in-use') {
+                 // 修改提示：告訴使用者如果被刪除過，直接登入即可
+                 setError('此 Email 已被註冊。若您曾刪除帳號，請直接「登入」即可重新建立檔案。');
+              } else if (err.code === 'auth/weak-password') {
+                 setError('密碼長度至少需 6 個字元');
+              } else {
+                 setError(`註冊失敗: ${err.message}`);
+              }
             } finally {
               setLoading(false);
             }
@@ -430,6 +438,25 @@
             }
           };
 
+          // 新增：管理者刪除使用者
+          const handleDeleteUser = async () => {
+             if (!selectedUser) return;
+             if (!window.confirm(`確定要刪除 ${selectedUser.name} 的所有資料嗎？\n\n注意：這不會刪除他的登入帳號，但會清空他的任務進度。若他再次登入，需要重新填寫資料。`)) return;
+             
+             setLoading(true);
+             try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', selectedUser.id));
+                // 刪除後，selectedUser 設為 null 返回列表
+                setSelectedUser(null);
+                setAdminError(null);
+             } catch (err) {
+                console.error("Delete failed:", err);
+                setAdminError("刪除失敗: " + err.message);
+             } finally {
+                setLoading(false);
+             }
+          };
+
           const handleAdminLogin = async (e) => {
             e.preventDefault();
             if (adminLoginData.account === ADMIN_CREDENTIALS.account && adminLoginData.password === ADMIN_CREDENTIALS.password) {
@@ -440,7 +467,7 @@
                 setError('');
               } catch (err) {
                 console.error("Admin auth failed:", err);
-                setError('後台連線驗證失敗');
+                setError('後台連線驗證失敗: ' + err.message);
               } finally {
                 setLoading(false);
               }
@@ -487,7 +514,7 @@
                    </button>
                 )}
                 {!profile && view === 'auth' && (
-                  <button onClick={() => setView('admin_login')} className="text-slate-300 text-[10px] font-black hover:text-slate-500 transition-colors uppercase tracking-widest">
+                  <button onClick={() => setView('admin_login')} className="text-slate-300 text-xs font-black hover:text-slate-500 transition-colors uppercase tracking-widest">
                     Admin
                   </button>
                 )}
@@ -521,7 +548,7 @@
                         </button>
                       </form>
                       
-                      {/* Google Login Button */}
+                      {/* Divider */}
                       <div className="relative">
                         <div className="absolute inset-0 flex items-center">
                           <span className="w-full border-t border-slate-100" />
@@ -531,21 +558,27 @@
                         </div>
                       </div>
 
-                      <button 
-                        onClick={handleGoogleLogin}
-                        className="w-full bg-white border-2 border-slate-100 hover:bg-slate-50 text-slate-700 font-black py-4 rounded-2xl shadow-sm transition-all active:scale-[0.97] flex items-center justify-center gap-2"
-                      >
-                         <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-green-500 p-[1px] flex items-center justify-center">
-                           <div className="w-full h-full bg-white rounded-full flex items-center justify-center text-[10px] font-bold">G</div>
-                         </div>
-                        Google 帳號登入
-                      </button>
+                      <div className="space-y-3">
+                          {/* 調整位置：註冊按鈕移至此處 */}
+                          <button 
+                            onClick={() => setView('register')} 
+                            className="w-full bg-orange-50 hover:bg-orange-100 text-orange-600 font-black py-3 rounded-2xl border border-orange-100 transition-colors text-sm"
+                          >
+                            第一次參加？使用 Email 註冊
+                          </button>
 
-                    </div>
-                    <div className="text-center">
-                      <button onClick={() => setView('register')} className="text-slate-400 text-sm font-black hover:text-orange-600 transition-colors">
-                        第一次參加？使用 Email 註冊
-                      </button>
+                          {/* Google Login Button */}
+                          <button 
+                            onClick={handleGoogleLogin}
+                            className="w-full bg-white border-2 border-slate-100 hover:bg-slate-50 text-slate-700 font-black py-4 rounded-2xl shadow-sm transition-all active:scale-[0.97] flex items-center justify-center gap-2"
+                          >
+                             <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-green-500 p-[1px] flex items-center justify-center">
+                               <div className="w-full h-full bg-white rounded-full flex items-center justify-center text-[10px] font-bold">G</div>
+                             </div>
+                            Google 帳號登入
+                          </button>
+                      </div>
+
                     </div>
                   </div>
                 )}
@@ -717,6 +750,14 @@
                 )}
                 {view === 'admin_dashboard' && (
                   <div className="space-y-6 animate-in">
+                    {/* 新增: 後台錯誤提示 */}
+                    {adminError && (
+                      <div className="bg-red-100 border border-red-200 text-red-700 px-4 py-3 rounded-2xl relative mb-4 font-bold text-sm">
+                        <strong className="font-black">錯誤：</strong>
+                        <span className="block sm:inline">{adminError}</span>
+                      </div>
+                    )}
+                    
                     {!selectedUser ? (
                       <React.Fragment>
                         <div className="flex items-center justify-between bg-white p-2 rounded-2xl border border-slate-100 shadow-sm">
@@ -759,13 +800,14 @@
                                    ))}
                                 </div>
                              </div>
-                             <div className="bg-slate-800 p-6 rounded-[2rem] text-white shadow-xl">
+                             {/* 修改 3: 總參與人數背景色改為較淺的深灰色，搭配橘色系 */}
+                             <div className="bg-slate-600 p-6 rounded-[2rem] text-white shadow-xl border border-slate-500">
                                 <div className="flex items-center justify-between mb-2">
-                                   <span className="text-slate-400 text-xs font-black uppercase tracking-widest">總參與人數</span>
+                                   <span className="text-slate-300 text-xs font-black uppercase tracking-widest">總參與人數</span>
                                    <span className="text-3xl font-black">{allUsers.length}</span>
                                 </div>
-                                <div className="h-1.5 bg-slate-700 w-full rounded-full"></div>
-                                <p className="text-[10px] text-slate-500 mt-3 font-bold">數據同步：{new Date().toLocaleTimeString()} (即時更新)</p>
+                                <div className="h-1.5 bg-slate-500 w-full rounded-full"></div>
+                                <p className="text-[10px] text-slate-300 mt-3 font-bold">數據同步：{new Date().toLocaleTimeString()} (即時更新)</p>
                              </div>
                           </div>
                         ) : (
@@ -799,9 +841,20 @@
                       </React.Fragment>
                     ) : (
                       <div className="animate-in space-y-6 pb-10">
-                        <button onClick={() => setSelectedUser(null)} className="flex items-center gap-1 text-slate-500 font-black hover:text-slate-800 transition-colors bg-white px-5 py-3 rounded-2xl shadow-sm border border-slate-100">
-                          <ArrowLeft size={16} /> 返回列表
-                        </button>
+                        <div className="flex items-center justify-between">
+                            <button onClick={() => setSelectedUser(null)} className="flex items-center gap-1 text-slate-500 font-black hover:text-slate-800 transition-colors bg-white px-5 py-3 rounded-2xl shadow-sm border border-slate-100">
+                              <ArrowLeft size={16} /> 返回列表
+                            </button>
+                            
+                            {/* 修改 1: 新增刪除按鈕 */}
+                            <button 
+                                onClick={handleDeleteUser}
+                                className="flex items-center gap-1 text-red-400 hover:text-red-600 transition-colors bg-red-50 hover:bg-red-100 px-4 py-3 rounded-2xl shadow-sm border border-red-100 font-black text-xs"
+                            >
+                              <Trash2 size={16} /> 刪除使用者
+                            </button>
+                        </div>
+                        
                         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl">
                           <div className="text-center mb-8">
                             <div className="w-20 h-20 bg-orange-100 rounded-[2rem] flex items-center justify-center mx-auto mb-4 rotate-3 shadow-inner">
