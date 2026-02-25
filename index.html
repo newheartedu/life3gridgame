@@ -28,6 +28,13 @@
     <style>
         body { font-family: system-ui, -apple-system, sans-serif; }
         #root:empty { display: none; }
+        /* 隱藏捲軸但保持可滑動，讓彈窗更美觀 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* 讓 input color 更好看 */
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: none; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body class="bg-orange-50">
@@ -50,7 +57,7 @@
         import { 
             CheckCircle2, User, ShieldCheck, LogOut, LayoutGrid, Loader2, 
             ChevronRight, ArrowLeft, Trophy, BarChart3, Users, KeyRound, 
-            AlertTriangle, Mail, Copy, Gift, X, Lock, Trash2
+            AlertTriangle, Mail, Copy, Gift, X, Lock, Trash2, Share2, Eraser, Type, PenTool, Download, SendHorizontal
         } from 'lucide-react';
 
         // --- Firebase 設定 ---
@@ -66,20 +73,32 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = 'life3-mission-grid-v2'; // 保持相同的 appId 讓原用戶免重新註冊
+        const appId = 'life3-mission-grid-v2';
 
         // --- 常數設定 ---
         const ALLIANCES = ['夢幻', 'Favor', '心不老', '顏值', 'Revival'];
         
-        // --- 擁抱九宮格 全新題目 (加入密碼鎖定) ---
+        // --- 擁抱九宮格 全新題目 (加入連結與特殊類型) ---
         const DEFAULT_TASKS = [
-            { title: "1️⃣感恩不要憋 🫶！", desc: "不要當冷漠 NPC👉🏽現在打開手機，傳一則真心感謝的訊息給祈翰哥／嘉華姊／你的小組長。" },
-            { title: "2️⃣我今年就是燃 🔥！", desc: "不要低調，直接宣告👉🏽去 Life3 IG 粉專置頂貼文底下留言：「我值得＿＿，今年我可以＿＿！」" },
+            { 
+                title: "1️⃣感恩不要憋 🫶！", 
+                desc: "用手畫卡片、電子卡片，或寫下一段文字、手寫卡片都可以，把你的感恩傳達給祈翰哥／嘉華姊／或你的小組長！",
+                type: "drawing" // 啟動繪圖板特殊功能
+            },
+            { 
+                title: "2️⃣我今年就是燃 🔥！", 
+                desc: "不要低調，直接宣告👉🏽去 Life3 IG粉專貼文底下留言：「我值得＿＿，今年我可以＿＿！」",
+                link: "https://www.instagram.com/life3_family?igsh=MWVsdm55dGpzeG8yag=="
+            },
             { title: "3️⃣就要跟你拍一張 📷！", desc: "這不是打卡，是紀念「我們一起」的時刻👉🏽跟小組或 Life3 的人拍一張照片，分享到小組群組、Life3大群（也可丟限動）。", password: "embrace", lockedTitle: "3.（隱藏題）" },
             { title: "4️⃣友情補給任務 ！", desc: "今天你當別人的充電器👉🏽選一個朋友，準備一份小禮物。直接去探班／探訪，給他一個驚喜。" },
             { title: "5️⃣社牛模式啟動 🐮🚀！", desc: "不用完美開場白，一句「要不要一起來？」就夠了👉🏽勇敢一次，邀一位朋友來 3/21 的 Life3 聚會。", password: "mission", lockedTitle: "5.（隱藏題）" },
             { title: "6️⃣感恩不是客套，是真的 ！", desc: "當你說出來，空氣都會變溫柔。在小組裡👉🏽分享一件你真心感謝的事。" },
-            { title: "7️⃣先追再說，不然會後悔 👀！", desc: "有些影響力，是從一個「追蹤」開始的👉🏽追蹤《擁抱計畫》IG。" },
+            { 
+                title: "7️⃣先追再說，不然會後悔 👀！", 
+                desc: "有些影響力，是從一個「追蹤」開始的👉🏽追蹤《擁抱計畫》IG。",
+                link: "https://www.instagram.com/_embraceofficial_?igsh=MWR5OTV1dDR0cGkyOQ=="
+            },
             { title: "8️⃣零食外交官 🍪🥤！", desc: "分享的瞬間，關係直接升溫👉🏽準備一份零食或飲料分享給一位不同聯盟或不同小組的Life3 家人。" },
             { title: "9️⃣拯救世界超展開 ！", desc: "也許你不是超級英雄，但你可以幫助更多人遇見希望👉🏽轉傳或分享百隊志工隊報名連結", password: "love", lockedTitle: "9.（隱藏題）" }
         ];
@@ -106,14 +125,402 @@
                             <AlertTriangle className="text-red-600 w-8 h-8" />
                         </div>
                         <h2 className="text-2xl font-black text-slate-800 mb-2">發生錯誤</h2>
-                        <p className="text-slate-600 font-bold mb-6 text-sm leading-relaxed">
-                            {error}
-                        </p>
+                        <p className="text-slate-600 font-bold mb-6 text-sm leading-relaxed">{error}</p>
                         <button 
                             onClick={onRetry || (() => window.location.reload())}
                             className="w-full bg-red-500 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-red-600 transition-all active:scale-95 flex items-center justify-center gap-2 mt-4"
                         >
                             我已設定完成，重試
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 新增：卡片手繪板組件 ---
+        const DrawingCanvas = ({ onComplete }) => {
+            const canvasRef = useRef(null);
+            const containerRef = useRef(null);
+            const [isDrawing, setIsDrawing] = useState(false);
+            const [tool, setTool] = useState('pen'); // 'pen', 'eraser', 'sticker'
+            
+            // 顏色與底色設定系統
+            const [color, setColor] = useState('#ef4444');
+            const [bgColor, setBgColor] = useState('#ffffff');
+            const [pendingBgColor, setPendingBgColor] = useState('#ffffff');
+
+            const [activeSticker, setActiveSticker] = useState('❤️');
+            
+            // 可移動文字系統
+            const [textInput, setTextInput] = useState('');
+            const [floatingTexts, setFloatingTexts] = useState([]);
+            const [draggingId, setDraggingId] = useState(null);
+
+            const [ctx, setCtx] = useState(null);
+
+            // 初始化 Canvas 參數
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                canvas.width = 600; 
+                canvas.height = 600;
+                const context = canvas.getContext('2d');
+                context.lineCap = 'round';
+                context.lineJoin = 'round';
+                // 改為透明背景，這樣底色才能透過 CSS 和最終匯出時呈現，橡皮擦也能擦除至透明
+                context.clearRect(0, 0, canvas.width, canvas.height); 
+                context.textAlign = 'center';
+                context.textBaseline = 'middle';
+                setCtx(context);
+            }, []);
+
+            // 取得相對於 600x600 畫布的精準座標
+            const getCoords = (e) => {
+                const rect = canvasRef.current.getBoundingClientRect();
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                const scaleX = 600 / rect.width;
+                const scaleY = 600 / rect.height;
+                return {
+                    x: (clientX - rect.left) * scaleX,
+                    y: (clientY - rect.top) * scaleY
+                };
+            };
+
+            const handlePointerDown = (e) => {
+                // 如果正在拖曳文字，不要在畫布上畫畫
+                if (draggingId !== null) return;
+                
+                e.preventDefault(); 
+                if (e.pointerId) e.currentTarget.setPointerCapture(e.pointerId);
+
+                const { x, y } = getCoords(e);
+                
+                if (tool === 'sticker') {
+                    ctx.globalCompositeOperation = 'source-over'; // 確保貼圖正常覆蓋繪製
+                    ctx.font = '60px system-ui';
+                    ctx.fillText(activeSticker, x, y);
+                    return;
+                }
+
+                setIsDrawing(true);
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+            };
+
+            const handlePointerMove = (e) => {
+                e.preventDefault();
+                
+                // 處理文字拖曳
+                if (draggingId !== null) {
+                    const { x, y } = getCoords(e);
+                    // 限制文字不要跑出畫布範圍太遠
+                    const boundedX = Math.max(0, Math.min(600, x));
+                    const boundedY = Math.max(0, Math.min(600, y));
+                    
+                    setFloatingTexts(prev => prev.map(t => 
+                        t.id === draggingId ? { ...t, x: boundedX, y: boundedY } : t
+                    ));
+                    return;
+                }
+
+                // 處理畫布繪畫
+                if (!isDrawing || tool === 'sticker') return;
+                const { x, y } = getCoords(e);
+                
+                if (tool === 'eraser') {
+                    // destination-out 模式會將畫過的軌跡變成透明的，從而露出下方的 css background
+                    ctx.globalCompositeOperation = 'destination-out'; 
+                    ctx.lineWidth = 40;
+                    ctx.strokeStyle = 'rgba(0,0,0,1)'; 
+                } else {
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.lineWidth = 10;
+                    ctx.strokeStyle = color;
+                }
+                
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            };
+
+            const handlePointerUp = () => {
+                if (draggingId !== null) {
+                    setDraggingId(null);
+                }
+                if (isDrawing) {
+                    ctx.closePath();
+                    setIsDrawing(false);
+                }
+            };
+
+            // 新增浮動文字
+            const handleAddText = () => {
+                if (!textInput.trim()) return;
+                setFloatingTexts([...floatingTexts, {
+                    id: Date.now(),
+                    text: textInput.trim(),
+                    x: 300, // 放中間
+                    y: 300,
+                    color: color, // 文字顏色跟隨當前畫筆顏色
+                    scale: 1 // 加入初始縮放比例
+                }]);
+                setTextInput('');
+                setTool('pen'); // 加完字跳回畫筆避免誤觸
+            };
+
+            // 調整文字縮放比例
+            const handleAdjustScale = (id, delta) => {
+                setFloatingTexts(prev => prev.map(t => {
+                    if (t.id === id) {
+                        return { ...t, scale: Math.max(0.4, Math.min(5, t.scale + delta)) };
+                    }
+                    return t;
+                }));
+            };
+
+            // 刪除浮動文字
+            const handleRemoveText = (idToRemove) => {
+                setFloatingTexts(prev => prev.filter(t => t.id !== idToRemove));
+            };
+
+            const clearCanvas = () => {
+                ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+                setFloatingTexts([]); // 同時清空文字
+            };
+
+            // 產生最終圖片的 Blob (結合畫布背景色 + 繪畫內容 + 浮動文字)
+            const generateFinalBlob = async () => {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = 600;
+                tempCanvas.height = 600;
+                const tCtx = tempCanvas.getContext('2d');
+                
+                // 1. 先畫出使用者選擇的底色
+                tCtx.fillStyle = bgColor;
+                tCtx.fillRect(0, 0, 600, 600);
+                
+                // 2. 再把手繪板的內容畫上去 (已經被橡皮擦擦掉的地方會透出底色)
+                tCtx.drawImage(canvasRef.current, 0, 0);
+                
+                // 3. 最後把所有浮動文字寫上去
+                floatingTexts.forEach(t => {
+                    tCtx.font = `900 ${40 * t.scale}px system-ui`; // 套用縮放比例
+                    tCtx.fillStyle = t.color;
+                    tCtx.textAlign = 'center';
+                    tCtx.textBaseline = 'middle';
+                    // 加上文字白邊，避免字與背景融合看不清楚，白邊粗細也跟隨比例縮放
+                    tCtx.strokeStyle = 'white';
+                    tCtx.lineWidth = 8 * t.scale; 
+                    tCtx.strokeText(t.text, t.x, t.y);
+                    tCtx.fillText(t.text, t.x, t.y);
+                });
+
+                return new Promise(resolve => tempCanvas.toBlob(resolve, 'image/png'));
+            };
+
+            // 下載儲存
+            const handleDownload = async () => {
+                const blob = await generateFinalBlob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'life3_thanks_card.png';
+                a.click();
+                URL.revokeObjectURL(url);
+                onComplete();
+            };
+
+            // 分享至社群
+            const handleShare = async () => {
+                const blob = await generateFinalBlob();
+                const file = new File([blob], "life3_thanks_card.png", { type: "image/png" });
+                
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    try {
+                        await navigator.share({
+                            files: [file],
+                            title: 'Life3 感恩卡片',
+                            text: '這是我親手畫的感恩卡！'
+                        });
+                        onComplete();
+                    } catch (err) {
+                        console.log("分享取消或失敗", err);
+                        onComplete();
+                    }
+                } else {
+                    alert('您的裝置或瀏覽器不支援直接分享，請改用「下載圖片」再手動分享喔！');
+                }
+            };
+
+            return (
+                <div className="flex flex-col gap-3 my-4 bg-slate-50 p-4 rounded-3xl border border-slate-100 shadow-sm">
+                    
+                    {/* 繪圖與浮動文字區 */}
+                    <div 
+                        className="relative touch-none overflow-hidden rounded-2xl border-2 border-slate-200 shadow-inner"
+                        ref={containerRef}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onPointerOut={handlePointerUp}
+                    >
+                        {/* 背景畫布 */}
+                        <canvas 
+                            ref={canvasRef}
+                            onPointerDown={handlePointerDown}
+                            style={{ backgroundColor: bgColor }}
+                            className={`w-full aspect-square ${tool === 'pen' || tool === 'eraser' ? 'cursor-crosshair' : 'cursor-default'}`}
+                        />
+
+                        {/* 浮動文字層 */}
+                        <div className="absolute inset-0 pointer-events-none">
+                            {floatingTexts.map(t => (
+                                <div
+                                    key={t.id}
+                                    onPointerDown={(e) => { e.stopPropagation(); setDraggingId(t.id); }}
+                                    className={`absolute pointer-events-auto flex flex-col items-center justify-center ${draggingId === t.id ? 'opacity-90' : ''}`}
+                                    style={{
+                                        // 把 600x600 的邏輯座標，轉換回 css 的 % 顯示
+                                        left: `${(t.x / 600) * 100}%`,
+                                        top: `${(t.y / 600) * 100}%`,
+                                        transform: 'translate(-50%, -50%)',
+                                        cursor: draggingId === t.id ? 'grabbing' : 'grab',
+                                        userSelect: 'none',
+                                        WebkitUserSelect: 'none',
+                                        whiteSpace: 'nowrap', // 強制橫書，不折行
+                                        zIndex: draggingId === t.id ? 10 : 1
+                                    }}
+                                >
+                                    {/* 縮放與刪除控制列 */}
+                                    <div className="flex gap-1 mb-1 opacity-70 hover:opacity-100 transition-opacity bg-white/90 p-1 rounded-lg shadow-sm border border-slate-200 backdrop-blur-sm">
+                                        <button 
+                                            onPointerDown={(e) => { e.stopPropagation(); handleAdjustScale(t.id, 0.2); }} 
+                                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-black text-xs active:scale-90 transition-all"
+                                        >A+</button>
+                                        <button 
+                                            onPointerDown={(e) => { e.stopPropagation(); handleAdjustScale(t.id, -0.2); }} 
+                                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-black text-xs active:scale-90 transition-all"
+                                        >A-</button>
+                                        <button 
+                                            onPointerDown={(e) => { e.stopPropagation(); handleRemoveText(t.id); }} 
+                                            className="w-7 h-7 flex items-center justify-center bg-red-100 hover:bg-red-200 rounded text-red-600 font-bold active:scale-90 transition-all ml-1"
+                                        ><X size={14} /></button>
+                                    </div>
+
+                                    {/* 實際文字 */}
+                                    <div style={{
+                                        transform: `scale(${t.scale})`,
+                                        color: t.color,
+                                        fontSize: '1.5rem',
+                                        fontWeight: '900',
+                                        textShadow: '0 0 6px white, 0 0 6px white, 0 0 6px white, 0 0 6px white',
+                                    }}>
+                                        {t.text}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {tool === 'sticker' && <div className="absolute top-2 left-0 right-0 text-center pointer-events-none text-slate-400 font-bold text-xs animate-pulse">請點擊畫布任意處貼上貼圖</div>}
+                    </div>
+                    
+                    {/* 工具列 */}
+                    <div className="flex flex-col gap-3">
+                        {/* 畫筆與卡片底色設定區 (光譜色盤) */}
+                        <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200 group-hover:border-slate-300 transition-colors">
+                                        <input 
+                                            type="color" 
+                                            value={color}
+                                            onChange={e => {setTool('pen'); setColor(e.target.value);}}
+                                            className="w-7 h-7 rounded cursor-pointer p-0 border-0 bg-transparent block" 
+                                        />
+                                    </div>
+                                    <span className="text-sm font-black text-slate-700">✍️ 畫筆色</span>
+                                </label>
+                                <button 
+                                    onClick={() => setTool('eraser')}
+                                    className={`px-3 py-1.5 flex items-center gap-1.5 text-sm font-bold rounded-lg transition-all ${tool === 'eraser' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                >
+                                    <Eraser size={16} /> 橡皮擦
+                                </button>
+                            </div>
+                            
+                            <div className="h-px w-full bg-slate-100"></div>
+
+                            <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <div className="bg-slate-50 p-1.5 rounded-lg border border-slate-200 group-hover:border-slate-300 transition-colors">
+                                        <input 
+                                            type="color" 
+                                            value={pendingBgColor}
+                                            onChange={e => setPendingBgColor(e.target.value)}
+                                            className="w-7 h-7 rounded cursor-pointer p-0 border-0 bg-transparent block" 
+                                        />
+                                    </div>
+                                    <span className="text-sm font-black text-slate-700">🎨 卡片底色</span>
+                                </label>
+                                <button 
+                                    onClick={() => setBgColor(pendingBgColor)}
+                                    className="bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold px-4 py-2 rounded-lg text-sm transition-all shadow-sm active:scale-95"
+                                >
+                                    套用底色
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 文字與貼圖工具 */}
+                        <div className="flex flex-col gap-2">
+                            {/* 打字送出區 */}
+                            <div className="flex gap-2">
+                                <div className="flex-1 flex bg-white border border-slate-200 rounded-xl overflow-hidden focus-within:border-orange-500 focus-within:ring-2 ring-orange-100 transition-all shadow-sm">
+                                    <div className="bg-slate-50 p-3 text-slate-400 flex items-center justify-center border-r border-slate-200">
+                                        <Type size={18} />
+                                    </div>
+                                    <input 
+                                        type="text" 
+                                        placeholder="輸入文字後點擊送出，可任意移動" 
+                                        value={textInput}
+                                        onChange={e => setTextInput(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleAddText()}
+                                        className="w-full text-sm px-3 py-2 outline-none font-bold"
+                                    />
+                                </div>
+                                <button 
+                                    onClick={handleAddText}
+                                    className="bg-orange-500 hover:bg-orange-600 text-white font-black px-4 rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all shadow-sm"
+                                >
+                                    送出
+                                </button>
+                            </div>
+                            
+                            {/* 貼圖按鈕 */}
+                            <div className="flex justify-between bg-white p-1 rounded-xl shadow-sm border border-slate-100">
+                                {['❤️', '✨', '🙏', '🔥', '😂'].map(emoji => (
+                                    <button
+                                        key={emoji}
+                                        onClick={() => {setTool('sticker'); setActiveSticker(emoji);}}
+                                        className={`flex-1 text-2xl py-1 rounded-lg transition-all ${tool === 'sticker' && activeSticker === emoji ? 'bg-orange-100 shadow-sm transform scale-110' : 'hover:bg-slate-50'}`}
+                                    >
+                                        {emoji}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 操作輸出按鈕 */}
+                    <div className="flex flex-col gap-2 mt-2">
+                        <div className="flex gap-2">
+                            <button onClick={handleDownload} className="flex-1 py-3 text-sm font-black text-slate-700 bg-white border-2 border-slate-200 rounded-xl hover:bg-slate-50 active:scale-95 transition-all flex items-center justify-center gap-2">
+                                <Download size={18} /> 下載圖片
+                            </button>
+                            <button onClick={handleShare} className="flex-1 py-3 text-sm font-black text-white bg-gradient-to-r from-orange-400 to-red-500 rounded-xl hover:from-orange-500 hover:to-red-600 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2">
+                                <Share2 size={18} /> 分享卡片
+                            </button>
+                        </div>
+                        <button onClick={clearCanvas} className="w-full py-2.5 text-xs font-bold text-slate-400 bg-transparent hover:text-slate-600 active:scale-95 transition-all">
+                            清除重畫
                         </button>
                     </div>
                 </div>
@@ -136,7 +543,7 @@
             const [selectedTaskIndex, setSelectedTaskIndex] = useState(null);
             const [showVoucher, setShowVoucher] = useState(false);
             const [hasSeenVoucher, setHasSeenVoucher] = useState(false);
-            const [sessionUnlocked, setSessionUnlocked] = useState(new Set()); // 記錄本次瀏覽解鎖的題目
+            const [sessionUnlocked, setSessionUnlocked] = useState(new Set()); 
             
             // 密碼彈窗狀態
             const [unlockPromptIndex, setUnlockPromptIndex] = useState(null);
@@ -163,15 +570,13 @@
             const [error, setError] = useState('');
             const [successMsg, setSuccessMsg] = useState('');
 
-            // 確認任務是否被鎖定的輔助函式
             const checkIsLocked = (task, index) => {
-                if (!task.password) return false; // 沒有設密碼的不用鎖
-                if (userTasks[index]) return false; // 已經完成的不再鎖
-                if (sessionUnlocked.has(index)) return false; // 這次登入已經解鎖過的不鎖
+                if (!task.password) return false; 
+                if (userTasks[index]) return false; 
+                if (sessionUnlocked.has(index)) return false; 
                 return true;
             };
 
-            // 1. 身份驗證監聽
             useEffect(() => {
                 let mounted = true;
                 const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -205,7 +610,6 @@
                 };
             }, [view]); 
 
-            // 2. 破關兌換券觸發監聽
             useEffect(() => {
                 if (view === 'grid' && profile && userTasks) {
                     const allDone = userTasks.length === 9 && userTasks.every(v => v === true);
@@ -213,13 +617,12 @@
                         const timer = setTimeout(() => {
                             setShowVoucher(true);
                             setHasSeenVoucher(true);
-                        }, 500); // 稍微延遲讓使用者看到最後一格打勾
+                        }, 500); 
                         return () => clearTimeout(timer);
                     }
                 }
             }, [userTasks, profile, view, hasSeenVoucher]);
 
-            // 3. 管理者數據監聽 (過濾掉已隱藏的玩家)
             useEffect(() => {
                 if (view !== 'admin_dashboard' || !user) return;
 
@@ -228,7 +631,6 @@
                     const users = [];
                     snapshot.forEach((doc) => {
                         const data = doc.data();
-                        // 如果玩家沒有被設定為 isHidden，才顯示在後台
                         if (!data.isHidden) {
                             users.push({ id: doc.id, ...data });
                         }
@@ -240,7 +642,6 @@
                 return () => unsubscribe();
             }, [view, user]);
 
-            // --- 統計排行榜 ---
             const allianceStats = useMemo(() => {
                 const stats = ALLIANCES.map(name => ({
                     name,
@@ -265,8 +666,6 @@
                     completionRate: s.totalPossibleTasks > 0 ? (s.completedTasks / s.totalPossibleTasks) * 100 : 0
                 })).sort((a, b) => b.completionRate - a.completionRate);
             }, [allUsers]);
-
-            // --- 核心處理功能 ---
 
             const handleRegister = async (e) => {
                 e.preventDefault();
@@ -371,19 +770,16 @@
                     const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', user.uid);
                     await updateDoc(profileRef, {
                         tasks: newTasks,
-                        isHidden: false, // 當玩家點擊任何進度，確保他取消隱藏，重新出現在後台名單
+                        isHidden: false, 
                         updatedAt: Date.now()
                     });
-                } catch (err) {
-                    // 隱藏錯誤訊息防干擾
-                }
+                } catch (err) {}
             };
 
             const handleUnlockSubmit = () => {
                 if (unlockPromptIndex === null) return;
                 
                 const task = DEFAULT_TASKS[unlockPromptIndex];
-                // 轉小寫比對，並去除前後空白，提升使用者體驗
                 if (unlockPassword.trim().toLowerCase() === task.password.toLowerCase()) {
                     const newSet = new Set(sessionUnlocked);
                     newSet.add(unlockPromptIndex);
@@ -393,13 +789,12 @@
                     setUnlockPromptIndex(null);
                     setUnlockPassword('');
                     setUnlockError('');
-                    setSelectedTaskIndex(openedIdx); // 解鎖成功直接打開任務面板
+                    setSelectedTaskIndex(openedIdx); 
                 } else {
                     setUnlockError('密碼錯誤，請再試一次！');
                 }
             };
 
-            // 改為使用 updateDoc 更新狀態 (隱藏與重置) 而非真的 deleteDoc 以避開權限問題
             const handleDeleteUser = async () => {
                 if (!deleteConfirmUser) return;
                 setIsDeleting(true);
@@ -407,10 +802,10 @@
                 try {
                     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'profiles', deleteConfirmUser.id), {
                         tasks: new Array(9).fill(false),
-                        isHidden: true // 設定為隱藏，後台就看不到了
+                        isHidden: true 
                     });
                     setDeleteConfirmUser(null);
-                    setSelectedUser(null); // 處理成功後退回列表
+                    setSelectedUser(null); 
                 } catch (err) {
                     console.error("Remove failed", err);
                     setDeleteError('清除失敗：請確認網路連線狀態。');
@@ -455,9 +850,7 @@
                     setUnlockPromptIndex(null);
                     setLoginData({ email: '', password: '' });
                     setView('auth');
-                } catch (err) {
-                    // 隱藏登出失敗錯誤
-                } finally {
+                } catch (err) {} finally {
                     setLoading(false);
                 }
             };
@@ -779,7 +1172,7 @@
                                 {/* 任務詳情 Modal */}
                                 {selectedTaskIndex !== null && (
                                     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => setSelectedTaskIndex(null)}>
-                                        <div className="bg-white rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                                        <div className="bg-white rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto no-scrollbar" onClick={e => e.stopPropagation()}>
                                             <button onClick={() => setSelectedTaskIndex(null)} className="absolute top-5 right-5 w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
                                                 <X size={18} />
                                             </button>
@@ -789,16 +1182,37 @@
                                             </div>
                                             
                                             <h3 className="text-xl md:text-2xl font-black text-slate-800 mb-4 leading-tight">{DEFAULT_TASKS[selectedTaskIndex].title}</h3>
-                                            <p className="text-slate-600 font-bold leading-relaxed mb-8 text-sm md:text-base">{DEFAULT_TASKS[selectedTaskIndex].desc}</p>
+                                            <p className="text-slate-600 font-bold leading-relaxed mb-6 text-sm md:text-base">{DEFAULT_TASKS[selectedTaskIndex].desc}</p>
+                                            
+                                            {/* 如果有連結設定，顯示連結按鈕 */}
+                                            {DEFAULT_TASKS[selectedTaskIndex].link && (
+                                                <a 
+                                                    href={DEFAULT_TASKS[selectedTaskIndex].link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="block w-full text-center bg-blue-50 text-blue-600 font-black py-4 rounded-2xl mb-6 hover:bg-blue-100 transition-colors border border-blue-100"
+                                                >
+                                                    👉 點擊前往任務連結
+                                                </a>
+                                            )}
+
+                                            {/* 如果是畫圖類型，嵌入我們的手繪板 */}
+                                            {DEFAULT_TASKS[selectedTaskIndex].type === 'drawing' && (
+                                                <DrawingCanvas onComplete={() => {
+                                                    if (!userTasks[selectedTaskIndex]) {
+                                                        handleToggleTask(selectedTaskIndex);
+                                                    }
+                                                }}/>
+                                            )}
                                             
                                             <button 
                                                 onClick={() => { 
                                                     handleToggleTask(selectedTaskIndex); 
                                                     setSelectedTaskIndex(null); 
                                                 }}
-                                                className={`w-full py-4 rounded-2xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${userTasks[selectedTaskIndex] ? 'bg-slate-100 text-slate-600 hover:bg-slate-200 shadow-none' : 'bg-orange-500 text-white hover:bg-orange-600'}`}
+                                                className={`w-full mt-4 py-4 rounded-2xl font-black shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${userTasks[selectedTaskIndex] ? 'bg-slate-100 text-slate-600 hover:bg-slate-200 shadow-none' : 'bg-orange-500 text-white hover:bg-orange-600'}`}
                                             >
-                                                {userTasks[selectedTaskIndex] ? '取消完成' : '標記為完成 ✅'}
+                                                {userTasks[selectedTaskIndex] ? '取消完成狀態' : '標記為完成 ✅'}
                                             </button>
                                         </div>
                                     </div>
@@ -818,7 +1232,6 @@
                                             </div>
                                             
                                             <div className="p-8 text-center bg-orange-50 relative">
-                                                {/* 票根打洞視覺效果 */}
                                                 <div className="absolute -top-4 -left-4 w-8 h-8 bg-slate-900/70 rounded-full"></div>
                                                 <div className="absolute -top-4 -right-4 w-8 h-8 bg-slate-900/70 rounded-full"></div>
                                                 
