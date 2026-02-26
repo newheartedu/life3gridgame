@@ -319,14 +319,29 @@
 
             // 下載儲存
             const handleDownload = async () => {
-                const blob = await generateFinalBlob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'life3_thanks_card.png';
-                a.click();
-                URL.revokeObjectURL(url);
-                onComplete();
+                try {
+                    const blob = await generateFinalBlob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = 'life3_thanks_card.png';
+                    
+                    // 必須將 a 標籤加入 DOM 中，多數瀏覽器才允許觸發點擊下載
+                    document.body.appendChild(a);
+                    a.click();
+                    
+                    // 給予一點緩衝時間讓瀏覽器啟動下載，然後再移除標籤與釋放記憶體
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 150);
+                    
+                    onComplete();
+                } catch (err) {
+                    console.error("下載失敗", err);
+                    alert("下載失敗，請嘗試使用「分享卡片」功能。");
+                }
             };
 
             // 分享至社群
@@ -376,7 +391,7 @@
                                 <div
                                     key={t.id}
                                     onPointerDown={(e) => { e.stopPropagation(); setDraggingId(t.id); }}
-                                    className={`absolute pointer-events-auto flex flex-col items-center justify-center ${draggingId === t.id ? 'opacity-90' : ''}`}
+                                    className={`group absolute pointer-events-auto flex flex-col items-center justify-center px-4 py-2 rounded-2xl border-2 transition-all ${draggingId === t.id ? 'border-orange-500 bg-white/50 shadow-lg scale-105 backdrop-blur-sm' : 'border-dashed border-slate-400/60 hover:border-orange-400 hover:bg-white/30'}`}
                                     style={{
                                         // 把 600x600 的邏輯座標，轉換回 css 的 % 顯示
                                         left: `${(t.x / 600) * 100}%`,
@@ -389,27 +404,26 @@
                                         zIndex: draggingId === t.id ? 10 : 1
                                     }}
                                 >
-                                    {/* 縮放與刪除控制列 */}
-                                    <div className="flex gap-1 mb-1 opacity-70 hover:opacity-100 transition-opacity bg-white/90 p-1 rounded-lg shadow-sm border border-slate-200 backdrop-blur-sm">
+                                    {/* 縮放與刪除控制列 (移至方框外部上方，且加上 group-hover 顯示效果) */}
+                                    <div className={`absolute -top-12 flex gap-1 transition-opacity bg-white p-1 rounded-xl shadow-md border border-slate-200 ${draggingId === t.id ? 'opacity-0' : 'opacity-40 group-hover:opacity-100'}`}>
                                         <button 
                                             onPointerDown={(e) => { e.stopPropagation(); handleAdjustScale(t.id, 0.2); }} 
-                                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-black text-xs active:scale-90 transition-all"
+                                            className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-slate-200 rounded-lg text-slate-700 font-black text-sm active:scale-90 transition-all"
                                         >A+</button>
                                         <button 
                                             onPointerDown={(e) => { e.stopPropagation(); handleAdjustScale(t.id, -0.2); }} 
-                                            className="w-7 h-7 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-black text-xs active:scale-90 transition-all"
+                                            className="w-8 h-8 flex items-center justify-center bg-slate-50 hover:bg-slate-200 rounded-lg text-slate-700 font-black text-sm active:scale-90 transition-all"
                                         >A-</button>
                                         <button 
                                             onPointerDown={(e) => { e.stopPropagation(); handleRemoveText(t.id); }} 
-                                            className="w-7 h-7 flex items-center justify-center bg-red-100 hover:bg-red-200 rounded text-red-600 font-bold active:scale-90 transition-all ml-1"
-                                        ><X size={14} /></button>
+                                            className="w-8 h-8 flex items-center justify-center bg-red-50 hover:bg-red-200 rounded-lg text-red-600 font-bold active:scale-90 transition-all ml-1"
+                                        ><X size={16} /></button>
                                     </div>
 
-                                    {/* 實際文字 */}
+                                    {/* 實際文字 (將原本的 transform scale 改為直接調整 fontSize，讓方框能完美包覆文字) */}
                                     <div style={{
-                                        transform: `scale(${t.scale})`,
+                                        fontSize: `${1.5 * t.scale}rem`,
                                         color: t.color,
-                                        fontSize: '1.5rem',
                                         fontWeight: '900',
                                         textShadow: '0 0 6px white, 0 0 6px white, 0 0 6px white, 0 0 6px white',
                                     }}>
